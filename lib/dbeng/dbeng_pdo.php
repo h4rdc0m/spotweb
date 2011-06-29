@@ -17,37 +17,19 @@ abstract class dbeng_pdo extends dbeng_abs {
             return $this->_conn->prepare($s);
         } # if
 
-		$pattern = '/(\'?\%[ds]\'?)/';
-        $matches = array();
-        preg_match_all($pattern, $s, $matches);
-        $s = preg_replace($pattern, '?', $s);
-        
 		$stmt = $this->_conn->prepare($s);
-        $idx=1;
-        foreach ($matches[1] as $m) {
-            if (!isset($p[$idx-1])) {
-                break;
-            } # if
-			
-            if (is_null($p[$idx-1])) {	
-                $stmt->bindValue($idx, null, PDO::PARAM_NULL);
-            } else {
-                switch ($m) {
-                    case '%d':
-						# we converteren expliciet naar strval, omdat PDO anders een 0 naar '' omzet
-                        $stmt->bindParam($idx, strval($p[$idx-1]), PDO::PARAM_INT);
-                        break;
-                    default:
-                        $stmt->bindParam($idx, $p[$idx-1], PDO::PARAM_STR);
-                }
-            }
-            $idx++;
-        }
-		
-		if (!$stmt instanceof PDOStatement) {
+        if (!$stmt instanceof PDOStatement) {
         	throw new Exception(print_r($stmt, true));
         }
-        
+
+        foreach ($p as $key => $val) {
+            if (is_int($p[$key])) {
+                $stmt->bindParam($key, intval($p[$key]), PDO::PARAM_INT);
+            } else {
+                $stmt->bindParam($key, $p[$key], PDO::PARAM_STR);
+            }
+        }
+
         return $stmt;
 	}
 	public function rawExec($s) {
