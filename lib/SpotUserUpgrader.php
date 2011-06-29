@@ -56,7 +56,7 @@ class SpotUserUpgrader {
 		# update handmatig het userid
 		$currentId = $dbCon->singleQuery("SELECT id FROM users WHERE username = 'anonymous'");
 		$dbCon->exec("UPDATE users SET id = 1 WHERE username = 'anonymous'");
-		$dbCon->exec("UPDATE usersettings SET userid = 1 WHERE userid = '%s'", Array( (int) $currentId));
+		$dbCon->exec("UPDATE usersettings SET userid = 1 WHERE userid = :userid", Array('userid' => (int) $currentId));
 
 		# Geef de anonieme user de anonymous group
 		$dbCon->rawExec("INSERT INTO usergroups(userid, groupid, prio) VALUES(1, 1, 1)");
@@ -101,7 +101,7 @@ class SpotUserUpgrader {
 		# update handmatig het userid
 		$currentId = $dbCon->singleQuery("SELECT id FROM users WHERE username = 'admin'");
 		$dbCon->exec("UPDATE users SET id = 2 WHERE username = 'admin'");
-		$dbCon->exec("UPDATE usersettings SET userid = 2 WHERE userid = '%s'", Array( (int) $currentId));
+		$dbCon->exec("UPDATE usersettings SET userid = 2 WHERE userid = :userid", Array('userid' => (int) $currentId));
 
 		# Geef user 2 (de admin user, naar we van uit gaan) de anon, auth en admin group
 		$dbCon->rawExec("INSERT INTO usergroups(userid,groupid,prio) VALUES(2, 1, 1)");
