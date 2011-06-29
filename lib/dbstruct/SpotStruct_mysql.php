@@ -43,13 +43,13 @@ class SpotStruct_mysql extends SpotStruct_abs {
 	
 	/* controleert of een index bestaat */
 	function indexExists($idxname, $tablename) {
-		$q = $this->_dbcon->arrayQuery("SHOW INDEXES FROM " . $tablename . " WHERE key_name = '%s'", Array($idxname));
+		$q = $this->_dbcon->arrayQuery("SHOW INDEXES FROM " . $tablename . " WHERE key_name = :key", Array('key' => $idxname));
 		return !empty($q);
 	} # indexExists
 
 	/* controleert of een column bestaat */
 	function columnExists($tablename, $colname) {
-		$q = $this->_dbcon->arrayQuery("SHOW COLUMNS FROM " . $tablename . " WHERE Field = '%s'", Array($colname));
+		$q = $this->_dbcon->arrayQuery("SHOW COLUMNS FROM " . $tablename . " WHERE Field = :field", Array('field' => $colname));
 		return !empty($q);
 	} # columnExists
 

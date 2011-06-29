@@ -315,7 +315,7 @@ class SpotDb {
 
         $tmpResult = $this->_conn->arrayQuery('
             SELECT
-                u.id AS userid
+                u.id AS userid,
                 u.username      AS username,
                 u.firstname     AS firstname,
                 u.lastname      AS lastname,

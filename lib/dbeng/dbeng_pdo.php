@@ -9,10 +9,11 @@ abstract class dbeng_pdo extends dbeng_abs {
      * behorende PDO::PARAM_*
      *
      * @param string $s
-     * @param array $p
+     * @param array $p 'query param name' => value
+     * @param bool $bind bepaald of de params hier al gekoppeld moeten worden
      * @return PDOStatement
      */
-	public function prepareSql($s, $p) {
+	public function prepareSql($s, $p, $bind = true) {
 		if (empty($p)) {
             return $this->_conn->prepare($s);
         } # if

@@ -41,16 +41,16 @@ class SpotStruct_pgsql extends SpotStruct_abs {
 	
 	/* controleert of een index bestaat */
 	function indexExists($idxname, $tablename) {
-		$q = $this->_dbcon->arrayQuery("SELECT indexname FROM pg_indexes WHERE schemaname = CURRENT_SCHEMA() AND tablename = '%s' AND indexname = '%s'",
-				Array($tablename, $idxname));
+		$q = $this->_dbcon->arrayQuery("SELECT indexname FROM pg_indexes WHERE schemaname = CURRENT_SCHEMA() AND tablename = :name AND indexname = :index",
+				Array('name'=>$tablename, 'index'=>$idxname));
 		return !empty($q);
 	} # indexExists
 
 	/* controleert of een column bestaat */
 	function columnExists($tablename, $colname) {
 		$q = $this->_dbcon->arrayQuery("SELECT column_name FROM information_schema.columns 
-											WHERE table_schema = CURRENT_SCHEMA() AND table_name = '%s' AND column_name = '%s'",
-									Array($tablename, $colname));
+											WHERE table_schema = CURRENT_SCHEMA() AND table_name = :name AND column_name = :col",
+									Array('name'=>$tablename, 'col'=>$colname));
 		return !empty($q);
 	} # columnExists
 
@@ -219,7 +219,7 @@ class SpotStruct_pgsql extends SpotStruct_abs {
 
 	/* controleert of een tabel bestaat */
 	function tableExists($tablename) {
-		$q = $this->_dbcon->arrayQuery("SELECT tablename FROM pg_tables WHERE schemaname = CURRENT_SCHEMA() AND (tablename = '%s')", array($tablename));
+		$q = $this->_dbcon->arrayQuery("SELECT tablename FROM pg_tables WHERE schemaname = CURRENT_SCHEMA() AND (tablename = :name)", array('name'=>$tablename));
 		return !empty($q);
 	} # tableExists
 
@@ -272,11 +272,11 @@ class SpotStruct_pgsql extends SpotStruct_abs {
 											JOIN information_schema.constraint_column_usage AS ccu ON ccu.constraint_name = tc.constraint_name
 										WHERE constraint_type = 'FOREIGN KEY' 
 										  AND tc.TABLE_SCHEMA = CURRENT_SCHEMA()
-										  AND tc.TABLE_NAME = '%s'
-										  AND kcu.COLUMN_NAME = '%s'
-										  AND ccu.table_name = '%s'
-										  AND ccu.column_name = '%s'",
-								Array($tablename, $colname, $reftable, $refcolumn));
+										  AND tc.TABLE_NAME = :table
+										  AND kcu.COLUMN_NAME = :col
+										  AND ccu.table_name = :reftable
+										  AND ccu.column_name = :refcol",
+								Array('table'=>$tablename, 'col'=>$colname, 'reftable'=>$reftable, 'refcol'=>$refcolumn));
 		if (!empty($q)) {
 			foreach($q as $res) {
 				$this->_dbcon->rawExec("ALTER TABLE " . $tablename . " DROP FOREIGN KEY " . $res['CONSTRAINT_NAME']);
@@ -300,11 +300,11 @@ class SpotStruct_pgsql extends SpotStruct_abs {
 											JOIN information_schema.constraint_column_usage AS ccu ON ccu.constraint_name = tc.constraint_name
 										WHERE constraint_type = 'FOREIGN KEY' 
 										  AND tc.TABLE_SCHEMA = CURRENT_SCHEMA()
-										  AND tc.TABLE_NAME = '%s'
-										  AND kcu.COLUMN_NAME = '%s'
-										  AND ccu.table_name = '%s'
-										  AND ccu.column_name = '%s'",
-								Array($tablename, $colname, $reftable, $refcolumn));
+										  AND tc.TABLE_NAME = :table
+										  AND kcu.COLUMN_NAME = :col
+										  AND ccu.table_name = :reftable
+										  AND ccu.column_name = :refcol",
+								Array('table'=>$tablename, 'col'=>$colname, 'reftable'=>$reftable, 'refcol'=>$refcolumn));
 		if (empty($q)) {
 			$this->_dbcon->rawExec("ALTER TABLE " . $tablename . " ADD FOREIGN KEY (" . $colname . ") 
 										REFERENCES " . $reftable . " (" . $refcolumn . ") " . $action);
@@ -329,9 +329,9 @@ class SpotStruct_pgsql extends SpotStruct_abs {
 											   collation_name AS \"COLLATION_NAME\"
 										FROM information_schema.COLUMNS 
 										WHERE TABLE_SCHEMA = CURRENT_SCHEMA() 
-										  AND TABLE_NAME = '%s'
-										  AND COLUMN_NAME = '%s'",
-							Array($tablename, $colname));
+										  AND TABLE_NAME = :table
+										  AND COLUMN_NAME = :col",
+							Array('table'=>$tablename, 'col'=>$colname));
 		if (!empty($q)) {
 			$q = $q[0];
 
@@ -359,8 +359,8 @@ class SpotStruct_pgsql extends SpotStruct_abs {
 		$q = $this->_dbcon->arrayQuery("SELECT * 
 										FROM pg_indexes 
 										WHERE schemaname = CURRENT_SCHEMA()
-										  AND tablename = '%s'
-										  AND indexname = '%s'", Array($tablename, $idxname));
+										  AND tablename = :table
+										  AND indexname = :index", Array('table'=>$tablename, 'index'=>$idxname));
 		if (empty($q)) {
 			return array();
 		} # if
