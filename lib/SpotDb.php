@@ -1236,11 +1236,11 @@ class SpotDb {
             'subcatz'       => $spot['subcatz'],
             'stamp'         => $spot['stamp'],
             'reversestamp'  => ($spot['stamp'] * -1),
-            'filesize'      => $spot['filesize']
+            'filesize'      => ($spot['filesize'] == 0 ? '0' : $spot['filesize'])
         );
 		$this->_conn->modify('
             INSERT INTO spots(messageid, poster, title, tag, category, subcata, subcatb, subcatc, subcatd, subcatz, stamp, reversestamp, filesize)
-            VALUES(:messageid, :poster, :title, :tag, :category, :subcata, :subcatb, :subcatc, :subcatd, :subcatz, :stap, :reversestamp, :filesize)
+            VALUES(:messageid, :poster, :title, :tag, :category, :subcata, :subcatb, :subcatc, :subcatd, :subcatz, :stamp, :reversestamp, :filesize)
         ', $params);
 
 		if (!empty($fullSpot)) {
