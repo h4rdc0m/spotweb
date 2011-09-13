@@ -289,7 +289,8 @@ class SpotDb {
                 u.lastread      AS lastread,
                 u.lastapiusage  AS lastapiusage,
                 s.publickey     AS publickey,
-                s.otherprefs    AS prefs
+                s.otherprefs    AS prefs,
+                u.id            AS userid
             FROM users AS u
             JOIN usersettings s ON (u.id = s.userid)
             WHERE u.id = :userid AND NOT DELETED
