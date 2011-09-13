@@ -34,6 +34,7 @@ class SpotPage_newznabapi extends SpotPage_Abs {
 			case "music"	:
 			case "movie"	:
 			case "m"		: $this->search($outputtype); break;
+			case "d"		:
 			case "details"	: $this->spotDetails($outputtype); break;
 			case "g"		:
 			case "get"		: $this->getNzb(); break;
@@ -96,7 +97,7 @@ class SpotPage_newznabapi extends SpotPage_Abs {
 			if (!@$imdb_content = file_get_contents('http://uk.imdb.com/title/tt' . $this->_params['imdbid'] . '/')) {
 				$this->showApiError(300);
 			} # if
-			preg_match('/<title>(.*?) \(.*?<\/title>/ms', $imdb_content, $movieTitle);
+			preg_match('/<h1 class="header" itemprop="name">([^\<]*)<span>/ms', $imdb_content, $movieTitle);
 			$search['value'][] = "Titel:=:\"" . trim($movieTitle[1]) . "\"";
 		} elseif (!empty($this->_params['q'])) {
 			$searchTerm = str_replace(" ", " +", $this->_params['q']);
@@ -122,7 +123,9 @@ class SpotPage_newznabapi extends SpotPage_Abs {
 		$pageNr = ($this->_params['offset'] != "" && is_numeric($this->_params['offset'])) ? $this->_params['offset'] : 0;
 		$offset = $pageNr*$limit;
 
-		$parsedSearch = $spotsOverview->filterToQuery($search, array('field' => 'stamp', 'direction' => 'DESC'), $this->_currentSession);
+		$spotUserSystem = new SpotUserSystem($this->_db, $this->_settings);
+		$parsedSearch = $spotsOverview->filterToQuery($search, array('field' => 'stamp', 'direction' => 'DESC'), $this->_currentSession,
+							$spotUserSystem->getIndexFilter($this->_currentSession['user']['userid']));
 		$spots = $spotsOverview->loadSpots($this->_currentSession['user']['userid'],
 						$pageNr,
 						$limit,
@@ -134,7 +137,40 @@ class SpotPage_newznabapi extends SpotPage_Abs {
 		$nzbhandling = $this->_currentSession['user']['prefs']['nzbhandling'];
 
 		if ($outputtype == "json") {
-			echo json_encode($spots); //TODO:make that a more specific array of data to return rather than resultset
+			$doc = array();
+			foreach($spots['list'] as $spot) {
+				$data = array();
+				$data['ID']				= $spot['messageid'];
+				$data['name']			= $spot['title'];
+				$data['size']			= $spot['filesize'];
+				$data['adddate']		= date('Y-m-d H:i:s', $spot['stamp']);
+				$data['guid']			= $spot['messageid'];
+				$data['fromname']		= $spot['poster'];
+				$data['completion']		= 100;
+
+				$nabCat = explode("|", $this->Cat2NewznabCat($spot['category'], $spot['subcata']));
+				if ($nabCat[0] != "" && is_numeric($nabCat[0])) {
+					$data['categoryID'] = $nabCat[0];
+					$cat = implode(",", $nabCat);
+				} # if
+
+				$nabCat = explode("|", $this->Cat2NewznabCat($spot['category'], $spot['subcatb']));
+				if ($nabCat[0] != "" && is_numeric($nabCat[0])) {
+					$cat .= "," . $nabCat[0];
+				} # if
+
+				$data['comments']		= $spot['commentcount'];
+				$data['category_name']	= SpotCategories::HeadCat2Desc($spot['category']) . ': ' . SpotCategories::Cat2ShortDesc($spot['category'], $spot['subcata']);
+				$data['category_ids']	= $cat;
+
+				if (empty($doc)) {
+					$data['_totalrows'] = count($spots['list']);
+				}
+				
+				$doc[] = $data;
+			} # foreach
+			
+			echo json_encode($doc);
 		} else {
 			# Opbouwen XML
 			$doc = new DOMDocument('1.0', 'utf-8');
@@ -268,7 +304,31 @@ class SpotPage_newznabapi extends SpotPage_Abs {
 		$spot = @$this->_tplHelper->formatSpot($fullSpot);
 
 		if ($outputtype == "json") {
-			echo json_encode($spot); //TODO:make that a more specific array of data to return rather than resultset
+			$doc = array();
+			$doc['ID']				= $spot['id'];
+			$doc['name']			= $spot['title'];
+			$doc['size']			= $spot['filesize'];
+			$doc['adddate']		= date('Y-m-d H:i:s', $spot['stamp']);
+			$doc['guid']			= $spot['messageid'];
+			$doc['fromname']		= $spot['poster'];
+			$doc['completion']		= 100;
+
+			$nabCat = explode("|", $this->Cat2NewznabCat($spot['category'], $spot['subcata']));
+			if ($nabCat[0] != "" && is_numeric($nabCat[0])) {
+				$doc['categoryID'] = $nabCat[0];
+				$cat = implode(",", $nabCat);
+			} # if
+
+			$nabCat = explode("|", $this->Cat2NewznabCat($spot['category'], $spot['subcatb']));
+			if ($nabCat[0] != "" && is_numeric($nabCat[0])) {
+				$cat .= "," . $nabCat[0];
+			} # if
+
+			$doc['comments']		= $spot['commentcount'];
+			$doc['category_name']	= SpotCategories::HeadCat2Desc($spot['category']) . ': ' . SpotCategories::Cat2ShortDesc($spot['category'], $spot['subcata']);
+			$doc['category_ids']	= $cat;
+			
+			echo json_encode($doc);
 		} else {
 			# Opbouwen XML
 			$doc = new DOMDocument('1.0', 'utf-8');
@@ -457,10 +517,12 @@ class SpotPage_newznabapi extends SpotPage_Abs {
 		$cat = $catList[0];
 		$nr = substr($cat, 1);
 
+		# Als $nr niet gevonden kan worden is dat niet erg, het mag echter
+		# geen Notice veroorzaken.
 		if (!empty($cat[0])) {
 			switch ($cat[0]) {
-				case "a"	: $newznabcat = $this->spotAcat2nabcat(); return $newznabcat[$hcat][$nr]; break;
-				case "b"	: $newznabcat = $this->spotBcat2nabcat(); return $newznabcat[$nr]; break;
+				case "a"	: $newznabcat = $this->spotAcat2nabcat(); return @$newznabcat[$hcat][$nr]; break;
+				case "b"	: $newznabcat = $this->spotBcat2nabcat(); return @$newznabcat[$nr]; break;
 			} # switch
 		} # if
 	} # Cat2NewznabCat

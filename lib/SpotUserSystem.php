@@ -275,6 +275,9 @@ class SpotUserSystem {
 		
 		# en geef de gebruiker de nodige groepen
 		$this->_db->setUserGroupList($tmpUser['userid'], $this->_settings->get('newuser_grouplist'));
+		
+		# en de nodige filters
+		$this->_db->copyFilterList(SPOTWEB_ANONYMOUS_USERID, $tmpUser['userid']);
 	} # addUser()
 
 	/*
@@ -320,7 +323,7 @@ class SpotUserSystem {
 	/*
 	 * Valideer de user preferences
 	 */
-	function validateUserPreferences($prefs) {
+	function validateUserPreferences($prefs, $currentPrefs) {
 		$errorList = array();
 		
 		# Definieer een aantal arrays met valid settings
@@ -340,6 +343,12 @@ class SpotUserSystem {
 		
 		if (in_array($prefs['template'], $validTemplates) === false) { 	
 			$errorList[] = array('validateuser_invalidpreference', array('template'));
+		} # if
+		
+		# Als nzbhandling instellingen totaal niet opgegeven zijn, defaulten we naar disable
+		if (!isset($prefs['nzbhandling'])) {
+			$prefs['nzbhandling'] = array('action' => 'disable',
+										  'prepare_action' => 'merge');										  
 		} # if
 		
 		# als er een sabnzbd host opgegeven is, moet die geldig zijn
@@ -374,6 +383,13 @@ class SpotUserSystem {
 			$prefs['notifications'][$notifProvider]['events']['user_added'] = (isset($prefs['notifications'][$notifProvider]['events']['user_added'])) ? true : false;
 		}
 
+		# Twitter tokens komen niet binnen via het form, maar mogen perse niet weggegooid worden.
+		$prefs['notifications']['twitter']['screen_name'] = $currentPrefs['notifications']['twitter']['screen_name'];
+		$prefs['notifications']['twitter']['access_token'] = $currentPrefs['notifications']['twitter']['access_token'];
+		$prefs['notifications']['twitter']['access_token_secret'] = $currentPrefs['notifications']['twitter']['access_token_secret'];
+		$prefs['notifications']['twitter']['request_token'] = $currentPrefs['notifications']['twitter']['request_token'];
+		$prefs['notifications']['twitter']['request_token_secret'] = $currentPrefs['notifications']['twitter']['request_token_secret'];
+
 		# We willen geen megabytes aan custom CSS opslaan, dus controleer dat dit niet te groot is
 		if (strlen($prefs['customcss'] > 1024 * 10)) { 
 			$errorList[] = array('validateuser_invalidpreference', array('customcss'));
@@ -407,6 +423,13 @@ class SpotUserSystem {
 		if ($prefs['notifications']['prowl']['enabled']) {
 			if (empty($prefs['notifications']['prowl']['apikey'])) {
 				$errorList[] = array('validateuser_invalidpreference', array('prowl apikey'));
+			} # if
+		} # if
+
+		# als men Twitter wil gebruiken, moet er er een account zijn geverifieerd
+		if ($prefs['notifications']['twitter']['enabled']) {
+			if (empty($prefs['notifications']['twitter']['access_token']) || empty($prefs['notifications']['twitter']['access_token_secret'])) {
+				$errorList[] = array('validateuser_invalidpreference', array('Er is geen account geverifi&euml;erd voor Twitter notificaties.'));
 			} # if
 		} # if
 
@@ -460,7 +483,8 @@ class SpotUserSystem {
 		} # if
 
 		# Is er geen andere uset met dezelfde mailaddress?
-		if ($this->_db->userEmailExists($user['mail']) !== $user['userid']) {
+		$emailExistResult = $this->_db->userEmailExists($user['mail']);
+		if (($emailExistResult !== $user['userid']) && ($emailExistResult !== false)) {
 			$errorList[] = array('validateuser_mailalreadyexist', array());
 		} # if
 		
@@ -580,7 +604,153 @@ class SpotUserSystem {
 		
 		return $tmpUser;
 	} # getUser()
+
+	/*
+	 * Vraagt een ongeformatteerde filterlist op
+	 */
+	function getPlainFilterList($userId, $filterType) {
+		return $this->_db->getPlainFilterList($userId, $filterType);
+	} # get PlainFilterList
 	
+	/*
+	 * Vraagt een filter list op
+	 */
+	function getFilterList($userId, $filterType) {
+		return $this->_db->getFilterList($userId, $filterType);
+	} # getFilterList
+	
+	/*
+	 * Vraag een specifieke filter op
+	 */
+	function getFilter($userId, $filterId) {
+		return $this->_db->getFilter($userId, $filterId);
+	} # getFilter
+
+	/*
+	 * Wijzigt de filter waardes.
+	 *
+	 * Op dit moment ondersteunen we enkel om de volgende waardes
+	 * te wijzigen
+	 *
+	 *   * Title
+	 *   * Order
+	 *   * Parent
+	 */
+	function changeFilter($userId, $filterForm) {
+		return $this->_db->updateFilter($userId, $filterForm);
+	} # getFilter
+
+
+	/*
+	 * Checkt of een filter geldig is
+	 */
+	function validateFilter($filter) {
+		$errorList = array();
+
+		# Verwijder overbodige spaties e.d.
+		$filter['title'] = trim(utf8_decode($filter['title']), " \t\n\r\0\x0B'\"");
+		$filter['title'] = trim(utf8_decode($filter['title']), " \t\n\r\0\x0B'\"");
+		
+		// controleer dat deze specifieke permissie niet al in de security groep zit
+		if (strlen($filter['title']) < 3) {
+			$errorList[] = array('validatefilter_invalidtitle', array('name'));
+		} # if
+		
+		return array($filter, $errorList);
+	} # validateFilter
+	
+	/*
+	 * Voegt een userfilter toe
+	 */
+	function addFilter($userId, $filter) {
+		$errorList = array();
+		list($filter, $errorList) = $this->validateFilter($filter);
+		
+		/* Geen fouten gevonden? voeg de filter dan toe */
+		if (empty($errorList)) {
+			$this->_db->addFilter($userId, $filter);
+		} # if
+		
+		return $errorList;
+	} # addFilter
+	
+	/*
+	 * Get the users' index filter
+	 */
+	function getIndexFilter($userId) {
+		$tmpFilter = $this->_db->getUserIndexFilter($userId);
+		if ($tmpFilter === false) {
+			return array('tree' => '');
+		} else {
+			return $tmpFilter;
+		} # else
+	} # getIndexFilter
+	
+	/*
+	 * Add user's index filter
+	 */
+	function setIndexFilter($userId, $filter) {
+		/* There can only be one */
+		$this->removeIndexFilter($userId);
+		
+		/* en voeg de index filter toe */
+		$filter['filtertype'] = 'index_filter';
+		$this->_db->addFilter($userId, $filter);
+	} # addIndexFilter
+	
+	/*
+	 * Remove an index filter
+	 */
+	function removeIndexFilter($userId) {
+		$tmpFilter = $this->_db->getUserIndexFilter($userId);
+		
+		if (!empty($tmpFilter)) {
+			$this->_db->deleteFilter($userId, $tmpFilter['id'], 'index_filter');
+		} # if
+	} # removeIndexFilter
+
+	/*
+	 * Voegt een userfilter toe
+	 */
+	function removeFilter($userId, $filterId) {
+		$this->_db->deleteFilter($userId, $filterId, 'filter');
+	} # removeFilter
+	
+	/*
+	 * Wist alle bestaande filters, en reset ze naar de opgegeven id
+	 */
+	function resetFilterList($userId) {
+		# Wis de filters
+		$this->_db->removeAllFilters($userId);
+		
+		# copieer de nodige filters
+		$this->_db->copyFilterList(SPOTWEB_ANONYMOUS_USERID, $userId);
+	} # resetFilterList
+
+	/*
+	 * Wist alle bestaande filters, en reset ze naar de opgegeven filterlist
+	 */
+	function setFilterList($userId, $filterList) {
+		# Wis de filters
+		$this->_db->removeAllFilters($userId);
+		
+		# copieer de nodige filters
+		foreach($filterList as $filter) {
+			$this->_db->addFilter($userId, $filter);
+		} # foreach
+	} # setFilterList
+	
+	/*
+	 * Wist alle bestaande filters, en reset ze naar de opgegeven id
+	 */
+	function setFiltersAsDefault($userId) {
+		# Wis de filters
+		$this->_db->removeAllFilters(SPOTWEB_ANONYMOUS_USERID);
+		
+		# copieer de nodige filters
+		$this->_db->copyFilterList($userId, SPOTWEB_ANONYMOUS_USERID);
+	} # setFiltersAsDefault
+
 	/*
 	 * Update een user record
 	 */
@@ -596,5 +766,218 @@ class SpotUserSystem {
 	function removeUser($userid) {
 		$this->_db->deleteUser($userid);
 	} # removeUser()
+
+	/*
+	 * Converteert een lijst met filters naar een XML record
+	 * welke uitwisselbaar is
+	 */
+	public function filtersToXml($filterList) {
+		$spotsOverview = new SpotsOverview($this->_db, $this->_settings);
+
+		# Opbouwen XML
+		$doc = new DOMDocument('1.0', 'utf-8');
+		$doc->formatOutput = true;
+
+		$mainElm = $doc->createElement('spotwebfilter');
+		$mainElm->appendChild($doc->createElement('version', '1.0'));
+		$mainElm->appendChild($doc->createElement('generator', 'SpotWeb v' . SPOTWEB_VERSION));
+		$doc->appendChild($mainElm);
+
+		$filterListElm = $doc->createElement('filters');
+
+		foreach($filterList as $filter) {
+			$filterElm = $doc->createElement('filter');
+			
+			$filterElm->appendChild($doc->createElement('id', $filter['id']));
+			$filterElm->appendChild($doc->createElement('title', $filter['title']));
+			$filterElm->appendChild($doc->createElement('icon', $filter['icon']));
+			$filterElm->appendChild($doc->createElement('parent', $filter['tparent']));
+			$filterElm->appendChild($doc->createElement('order', $filter['torder']));
+
+			/* 
+			 * Voeg nu de boom toe - we krijgen dat als tree aangeleverd maar
+			 * we willen die boom graag een beetje klein houden. We comprimeren
+			 * dus de boom
+			 *
+			 * Maar eerst moeten we de tree parseren naar een aparte lijst
+			 * categorieen en strongnots
+			 */
+			$dynaList = explode(',', $filter['tree']);
+			list($categoryList, $strongNotList) = $spotsOverview->prepareCategorySelection($dynaList);
+			$treeList = explode(',', $spotsOverview->compressCategorySelection($categoryList, $strongNotList));
+			$tree = $doc->createElement('tree');
+			foreach($treeList as $treeItem) { 
+				if (!empty($treeItem)) {
+					# Bepaal wat voor type tree element dit is
+					$treeType = 'include';
+					if ($treeItem[0] == '~') {
+						$treeType = 'strongnot';
+						$treeItem = substr($treeItem, 1);
+					} elseif ($treeItem[1] == '!') {
+						$treeType = 'exclude';
+						$treeItem = substr($treeItem, 1);
+					} # else
+					
+					# Creer nu een tree item
+					$treeElm = $doc->createElement('item', $treeItem);
+					$treeElm->setAttribute('type', $treeType);
+
+					if (!empty($treeItem)) {
+						$tree->appendChild($treeElm);
+					} # if
+				} # if
+			} # treeItems
+			$filterElm->appendChild($tree);
+
+			/* 
+			 * Prepareer de filtervalue list zodat hij bruikbaar is 
+			 * in de XML hieronder
+			 */
+			$tmpFilterValues = explode('&', $filter['valuelist']);
+			$filterValueList = array();
+			foreach($tmpFilterValues as $filterValue) {
+				$tmpFilter = explode(':', urldecode($filterValue));
+				
+				# maak de daadwerkelijke filter
+				if (count($tmpFilter) >= 3) {
+					$filterValueList[] = Array('fieldname' => $tmpFilter[0],
+											 'operator' => $tmpFilter[1],
+											 'value' => join(":", array_slice($tmpFilter, 2)));
+				} # if
+			} # foreach
+
+			/* 
+			 * Voeg nu de filter items (text searches e.d. toe)
+			 */
+			 if (!empty($filterValueList)) {
+				 $valuesElm = $doc->createElement('values');
+				 foreach($filterValueList as $filterValue) {
+					# Creer nu een tree item
+					$itemElm = $doc->createElement('item');
+					$itemElm->appendChild($doc->createElement('fieldname', $filterValue['fieldname']));
+					$itemElm->appendChild($doc->createElement('operator', $filterValue['operator']));
+					$itemElm->appendChild($doc->createElement('value', $filterValue['value']));
+
+					$valuesElm->appendChild($itemElm);
+				 } # foreach
+				$filterElm->appendChild($valuesElm);
+			} # if
+			 
+			/* 
+			 * Voeg nu de sort items
+			 */
+			if (!empty($filter['sorton'])) {
+				$sortElm = $doc->createElement('sort');
+				# Creer nu een tree item
+				$itemElm = $doc->createElement('item');
+				$itemElm->appendChild($doc->createElement('fieldname', $filter['sorton']));
+				$itemElm->appendChild($doc->createElement('direction', $filter['sortorder']));
+
+				$sortElm->appendChild($itemElm);
+				$filterElm->appendChild($sortElm);
+			} # if
+
+			$filterListElm->appendChild($filterElm);
+		} # foreach
+		
+		$mainElm->appendChild($filterListElm);
+
+		return $doc->saveXML();
+	} # filtersToXml 
+
+	/*
+	 * Converteert XML string naar een lijst met filters 
+	 */
+	public function xmlToFilters($xmlStr) {
+		$filterList = array();
+		$idMapping = array();
+		$spotsOverview = new SpotsOverview($this->_db, $this->_settings);
+
+		/*
+		 * Parse de XML file
+		 */		
+		$xml = @(new SimpleXMLElement($xmlStr));
+		
+		# Op dit moment kunnen we maar 1 versie van filters parsen
+		if ( (string) $xml->version != '1.0') {
+			return $filterList;
+		} # if
+
+		# en loop door alle filters heen
+		foreach($xml->xpath('/spotwebfilter/filters/filter') as $filterItem) {
+			$filter['id'] = (string) $filterItem->id;
+			$filter['title'] = (string) $filterItem->title;
+			$filter['icon'] = (string) $filterItem->icon;
+			$filter['tparent'] = (string) $filterItem->parent;
+			$filter['torder'] = (string) $filterItem->order;
+			$filter['filtertype'] = 'filter';
+			$filter['sorton'] = '';
+			$filter['sortorder'] = '';
+			$filter['tree'] = '';
+			$filter['children'] = array();
+
+			/*
+			 * Parseer de items waarin de tree filters staan
+			 */
+			$treeStr = "";
+			foreach($filterItem->xpath('tree/item') as $treeItem) {
+				$treeType = (string) $treeItem->attributes()->type;
+				if ($treeType == 'exclude') {
+					$treeStr .= ',!' . $treeItem[0];
+				} elseif ($treeType == 'strongnot') {
+					$treeStr .= ',~' . $treeItem[0];
+				} elseif ($treeType == 'include') {
+					$treeStr .= ',' . $treeItem[0];
+				} # if
+			} # foreach
+			
+			if (strlen($treeStr) > 1) {
+				$treeStr = substr($treeStr, 1);
+			} # if
+			
+			$filter['tree'] = $treeStr;
+
+			/*
+			 * Parseer de items waarin de tree filters staan
+			 */
+			$filterValues = array();
+			foreach($filterItem->xpath('values/item') as $valueItem) {
+				$value = array();
+
+				$filterValues[] = urlencode(
+								   (string) $valueItem->fieldname . 
+									':' . 
+								   (string) $valueItem->operator . 
+									':' . 
+								   (string) $valueItem->value
+								  );
+			} # foreach
+			$filter['valuelist'] = $filterValues;
+
+			/* 
+			 * Sorteer elementen zijn optioneel, kijk of ze bestaan
+			 */
+			if ($filterItem->sort) {
+				$filter['sorton'] = (string) $filterItem->sort->item->fieldname;
+				$filter['sortorder'] = (string) $filterItem->sort->item->direction;
+			} # if
+			
+			$filterList[$filter['id']] = $filter;
+		} # foreach
+		
+		/*
+		 * Nu gaan we er en boom van maken, we kunnen dit niet op dezelfde
+		 * manier doen als in SpotDb omdat de xpath() functie geen reference
+		 * toestaat 
+		 */
+		 foreach($filterList as $idx => &$filter) {
+			if ($filter['tparent'] != 0) {
+				$filterList[$filter['tparent']]['children'][] =& $filter;
+				unset($filterList[$filter['id']]);
+			} # if
+		} # for
+		
+		return $filterList;
+	} # xmlToFilters
 	
 } # class SpotUserSystem

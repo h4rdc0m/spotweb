@@ -194,16 +194,22 @@ class dbeng_mysql extends dbeng_abs {
 		return $rows['rows_matched'];
 	} # rows()
 	
+	function lastInsertId($tableName) {
+		return mysql_insert_id($this->_conn);
+	} # lastInsertId
+
 	/*
 	 * Construeert een stuk van een query om op text velden te matchen, geabstraheerd
 	 * zodat we eventueel gebruik kunnen maken van FTS systemen in een db
 	 */
-	function createTextQuery($field, $searchValue) {
+	function createTextQuery($searchFields) {
 		SpotTiming::start(__FUNCTION__);
 
-		$searchMode = "match-natural";
-		$searchValue = trim($searchValue);
-		$tempSearchValue = str_replace(array('+', '-', 'AND', 'NOT', 'OR'), '', $searchValue);
+		# Initialiseer een aantal arrays welke we terug moeten geven aan
+		# aanroeper
+		$filterValueSql = array();
+		$additionalFields = array();
+		$sortFields = array();
 
 		# MySQL fulltext search kent een minimum aan lengte voor woorden dat het indexeert,
 		# standaard staat dit op 4 en dat betekent bv. dat een zoekstring als 'Top 40' niet gevonden
@@ -212,61 +218,146 @@ class dbeng_mysql extends dbeng_abs {
 		$serverSetting = $this->arrayQuery("SHOW VARIABLES WHERE variable_name = 'ft_min_word_len'");
 		$minWordLen = $serverSetting[0]['Value'];
 
-		# bekijk elk woord individueel, is het korter dan $minWordLen, gaan we terug naar normale 
-		# LIKE  modus
-		$termList = explode(' ', $tempSearchValue);
-		foreach($termList as $term) {
-			if ((strlen($term) < $minWordLen) && (strlen($term) > 0)) {
-				$searchValue = $tempSearchValue;
-				$searchMode = "normal";
-				break;
-			} # if
-		} # foreach
-		
-		# bekijk elk woord opnieuw individueel, als we een + of - sign aan het begin van een woord
-		# vinden, schakelen we over naar boolean match
-		$termList = explode(' ', $searchValue);
-		foreach($termList as $term) {
-			# We strippen een aantal karakters omdat dat niet de search 
-			# methode mag beinvloeden, bv. (<test) oid.
-			$strippedTerm = trim($term, "()'\"");
-		
-			# als er boolean phrases in zitten, is het een boolean search
-			if (strpos('+-~<>', $strippedTerm[0]) !== false) {
-				$searchMode = 'match-boolean';
-				break;
-			} # if
+		foreach($searchFields as $searchItem) {
+			$hasTooShortWords = false;
+			$hasLongEnoughWords = false;
+			$hasStopWords = false;
+			$hasNoStopWords = false;
 			
-			if (strpos('*', substr($strippedTerm, -1)) !== false) {
-				$searchMode = 'match-boolean';
-				break;
-			} # if
+			$searchMode = "match-natural";
+			$searchValue = trim($searchItem['value']);
+			$field = $searchItem['fieldname'];
+			$tempSearchValue = str_replace(array('+', '-', 'AND', 'NOT', 'OR'), '', $searchValue);
 
-			if (strpos('"', substr($term, -1)) !== false) {
-				$searchMode = 'match-boolean';
-				break;
-			} # if
+			# bekijk elk woord individueel, is het korter dan $minWordLen, moeten we ook een LIKE 
+			# search doen
+			$termList = explode(' ', $tempSearchValue);
+			foreach($termList as $term) {
+				if ((strlen($term) < $minWordLen) && (strlen($term) > 0)) {
+					$hasTooShortWords = true;
+				} # if
 
-			# als het een stop word is, dan vallen we ook terug naar de like search
-			if (in_array($strippedTerm, $this->stop_words) !== false) {
+				if (strlen($term) >= $minWordLen) {
+					$hasLongEnoughWords = true;
+				} # if
+			} # foreach
+			
+			# Wis dubbele spaties anders vinden we nooit iets
+			$searchValue = str_replace('  ', ' ', $tempSearchValue);
+			
+			# bekijk elk woord opnieuw individueel, als we een + of - sign aan het begin van een woord
+			# vinden, schakelen we over naar boolean match
+			$termList = explode(' ', $searchValue);
+			foreach($termList as $term) {
+				# We strippen een aantal karakters omdat dat niet de search 
+				# methode mag beinvloeden, bv. (<test) oid.
+				$strippedTerm = trim($term, "()'\"");
+			
+				# als na het strippen van de terms er niks over blijft, dan
+				# hoeven we ook niet te zoeken.
+				if (strlen($strippedTerm) < 1) {
+					continue;
+				} # if
+
+				# als er boolean phrases in zitten, is het een boolean search
+				if (strpos('+-~<>', $strippedTerm[0]) !== false) {
+					$searchMode = 'match-boolean';
+				} # if
+				
+				if (strpos('*', substr($strippedTerm, -1)) !== false) {
+					$searchMode = 'match-boolean';
+				} # if
+
+				if (strpos('"', substr($term, -1)) !== false) {
+					$searchMode = 'match-boolean';
+				} # if
+
+				# als het een stop word is, dan vallen we ook terug naar de like search
+				if (in_array($strippedTerm, $this->stop_words) !== false) {
+					$hasStopWords = true;
+				} else {
+					# Deze zekerheid is nodig om ervoor te zorgen dat als men enkel op
+					# stopwoorden of te korte woorden zoekt ("The Top") dat we toch
+					# naar de like search terugvallen
+					if (strlen($term) >= $minWordLen) {
+						$hasNoStopWords = true;
+					} # if
+				} # else
+			} # foreach
+			
+			# Bepaal nu de searchmode
+			/* 
+			 * Test cases:
+			 *
+			 * 		9th Company
+			 *		Ubuntu 9
+			 *		Top 40
+			 *		South Park
+			 *		Sex and the city 
+			 *		Rio
+			 *		"sex and the city 2"
+ 			 *		Just Go With It (fallback naar like, enkel stopwoorden of te kort)
+			 *		"Just Go With It" (fallback naar like, en quotes gestripped)
+			 */
+/*
+			var_dump($hasTooShortWords);
+			var_dump($hasStopWords);
+			var_dump($hasLongEnoughWords);
+			var_dump($hasNoStopWords);
+			var_dump($searchMode);
+			die();
+*/			
+			
+			if (($hasTooShortWords || $hasStopWords) && ($hasLongEnoughWords || $hasNoStopWords)) {
+				if ($hasStopWords && !$hasNoStopWords) {
+					$searchMode = 'normal';
+				} else {
+					$searchMode = 'both-' . $searchMode;
+				} # else
+			} elseif (($hasTooShortWords || $hasStopWords) && (!$hasLongEnoughWords && !$hasNoStopWords)) {
 				$searchMode = 'normal';
-				break;
+			} # else
+
+			# en bouw de query op
+			$queryPart = '';
+			if (($searchMode == 'normal') || ($searchMode == 'both-match-natural') /* || ($searchMode == 'both-match-boolean')*/) {
+				$filterValueSql[] = ' ' . $field . " LIKE '%" . $this->safe(trim($searchValue, "\"'")) . "%'";
+			} # if
+			
+			if (($searchMode == 'match-natural') || ($searchMode == 'both-match-natural')) {
+				/* Natural language mode is altijd het default in MySQL 5.0 en 5.1, maar kan in 5.0 niet expliciet opgegeven worden */
+				$queryPart = " MATCH(" . $field . ") AGAINST ('" . $this->safe($searchValue) . "')"; 
+				$filterValueSql[] = $queryPart;
+			} # if 
+			
+			if (($searchMode == 'match-boolean') || ($searchMode == 'both-match-boolean')) {
+				$queryPart = " MATCH(" . $field . ") AGAINST ('" . $this->safe($searchValue) . "' IN BOOLEAN MODE)";
+				$filterValueSql[] = $queryPart;
+			} # if
+			
+			# We voegen deze extended textqueries toe aan de filterlist als
+			# relevancy veld, hiermee kunnen we dan ook zoeken op de relevancy
+			# wat het net wat interessanter maakt
+			if ($searchMode != 'normal') {
+				# We zouden in theorie meerdere van deze textsearches kunnen hebben, dan 
+				# sorteren we ze in de volgorde waarop ze binnenkwamen 
+				$tmpSortCounter = count($additionalFields);
+				
+				$additionalFields[] = $queryPart . ' AS searchrelevancy' . $tmpSortCounter;
+			
+				$sortFields[] = array('field' => 'searchrelevancy' . $tmpSortCounter,
+									  'direction' => 'DESC',
+									  'autoadded' => true,
+									  'friendlyname' => null);
 			} # if
 		} # foreach
-		
-		switch($searchMode) {
-			case 'normal'			: $queryPart = ' ' . $field . " LIKE '%" . $this->safe($searchValue) . "%'"; break;
-			
-			/* Natural language mode is altijd het default in MySQL 5.0 en 5.1, maar kan in 5.0 niet expliciet opgegeven worden */
-			case 'match-natural'	: $queryPart = " MATCH(" . $field . ") AGAINST ('" . $this->safe($searchValue) . "')"; break;
-			case 'match-boolean'	: $queryPart = " MATCH(" . $field . ") AGAINST ('" . $this->safe($searchValue) . "' IN BOOLEAN MODE)"; break;
-		} # else
 
-		SpotTiming::stop(__FUNCTION__, array($field,$searchValue));
-		
-		return array('filter' => $queryPart,
+		SpotTiming::stop(__FUNCTION__, array($filterValueSql,$additionalFields,$sortFields));
+
+		return array('filterValueSql' => $filterValueSql,
 					 'additionalTables' => array(),
-					 'sortable' => ($searchMode != 'normal') );
+					 'additionalFields' => $additionalFields,
+					 'sortFields' => $sortFields);
 	} # createTextQuery()
 	
 

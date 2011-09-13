@@ -1,6 +1,4 @@
 <?php
-require_once "lib/exceptions/RetrieverRunningException.php";
-
 abstract class SpotRetriever_Abs {
 		protected $_server;
 		protected $_spotnntp;
@@ -28,7 +26,7 @@ abstract class SpotRetriever_Abs {
 		/*
 		 * NNTP Server waar geconnet moet worden
 		 */
-		function __construct($server, $db, $settings) {
+		function __construct($server, SpotDb $db, SpotSettings $settings) {
 			$this->_server = $server;
 			$this->_db = $db;
 			$this->_settings = $settings;
@@ -126,7 +124,7 @@ abstract class SpotRetriever_Abs {
 				$processed += $processOutput['count'];
 				$headersProcessed += $processOutput['headercount'];
 				$highestMessageId = $processOutput['lastmsgid'];
-				
+
 				# reset the start time to prevent a another retriever from starting
 				# during the intial retrieve which can take many hours 
 				$this->_db->setRetrieverRunning($this->_server['host'], true);

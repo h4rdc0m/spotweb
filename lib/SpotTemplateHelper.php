@@ -77,7 +77,7 @@ class SpotTemplateHelper {
 
 		parse_str(html_entity_decode($filterStr), $query_params);
 		
-		$parsedSearch = $this->_spotsOverview->filterToQuery($query_params['search'], array(), $this->_currentSession);
+		$parsedSearch = $this->_spotsOverview->filterToQuery($query_params['search'], array(), $this->_currentSession, array());
 
 		return $this->getSpotCount($parsedSearch['filter']);
 	} # getFilteredSpotCount
@@ -215,11 +215,25 @@ class SpotTemplateHelper {
 	} # makeCreateUserAction
 	
 	/*
-	 * Creeert de action url voor het wissen van een permissie 
+	 * Creeert de action url voor het beweken van een security group 
 	 */
 	function makeEditSecGroupAction() {
 		return $this->makeBaseUrl("path") . "?page=editsecgroup";
 	} # makeEditSecGroupAction
+
+	/*
+	 * Creeert de action url voor het wijzigen van een filter
+	 */
+	function makeEditFilterAction() {
+		return $this->makeBaseUrl("path") . "?page=editfilter";
+	} # makeEditFilterAction
+
+	/*
+	 * Creeert de action url voor het wissen van een filter
+	 */
+	function makeDeleteFilterAction() {
+		return $this->makeBaseUrl("path") . "?page=editfilter";
+	} # makeDeleteFilterAction
 
 	/*
 	 * Creeert de action url voor het wijzigen van de user (gebruikt in form post actions)
@@ -314,7 +328,15 @@ class SpotTemplateHelper {
 			return '';
 		} # if
 		
-		return $this->makeBaseUrl("path") . '?page=getimage&amp;messageid=' . urlencode($spot['messageid']) . '&amp;image[height]=' . $height . '&amp;image[width]=' . $width;
+		# Volgens issue 941 wil men soms vanuit de RSS of Newznab feed rechtstreeks
+		# images kunnen laden. We checken of het 'getimage' recht rechtstreeks via de
+		# API aan te roepen is, en zo ja, creeren we API urls.
+		$apiKey = '';
+		if ($this->_spotSec->allowed(SpotSecurity::spotsec_consume_api, 'getimage')) {
+			$apiKey = $this->makeApiRequestString();
+		} # if
+		
+		return $this->makeBaseUrl("path") . '?page=getimage&amp;messageid=' . urlencode($spot['messageid']) . '&amp;image[height]=' . $height . '&amp;image[width]=' . $width . $apiKey;
 	} # makeImageUrl
 
 	/*
@@ -323,7 +345,7 @@ class SpotTemplateHelper {
 	function makeSortUrl($page, $sortby, $sortdir) {
 		return $this->makeBaseUrl("path") . '?page=' . $page . $this->convertFilterToQueryParams() . '&amp;sortby=' . $sortby . '&amp;sortdir=' . $sortdir;
 	} # makeSortUrl
-
+	
 	/*
 	 * Creert een category url
 	 */
@@ -382,7 +404,11 @@ class SpotTemplateHelper {
 	 * Creert een RSS url
 	 */
 	function makeRssUrl() {
-		return $this->makeBaseUrl("path") . '?page=rss&amp;' . $this->convertFilterToQueryParams() . '&amp;' . $this->convertSortToQueryParams();
+		if (isset($this->_params['parsedsearch'])) {
+			return $this->makeBaseUrl("path") . '?page=rss&amp;' . $this->convertFilterToQueryParams() . '&amp;' . $this->convertSortToQueryParams();
+		} else {
+			return '';
+		} # if
 	} # makeRssUrl
 	
 	/*
@@ -424,11 +450,9 @@ class SpotTemplateHelper {
 		$tmp = html_entity_decode($tmp, ENT_COMPAT, 'UTF-8');
 		
 		# Code gecopieerd vanaf 
-		#		http://codesnippets.joyent.com/posts/show/2104
+		#		http://stackoverflow.com/questions/635844/php-how-to-grab-an-url-out-of-a-chunk-of-text
 		# converteert linkjes naar bb code
-		$pattern = "@\b(https?://)?(([0-9a-zA-Z_!~*'().&=+$%-]+:)?[0-9a-zA-Z_!~*'().&=+$%-]+\@)" . 
-						"?(([0-9]{1,3}\.){3}[0-9]{1,3}|([0-9a-zA-Z_!~*'()-]+\.)*([0-9a-zA-Z][0-9a-zA-Z-]" .
-						"{0,61})?[0-9a-zA-Z]\.[a-zA-Z]{2,6})(:[0-9]{1,4})?((/[0-9a-zA-Z_!~*'().;?:\@&=+$,%#-]+)*/?)@";
+		$pattern = "((https?|ftp|gopher|telnet|file|notes|ms-help):((//)|(\\\\))+[\w\d:#@%/;$()~_?\+-=\\\.&]*)";
 		$tmp = preg_replace($pattern, '[url=\0]\0[/url]', $tmp);
 		
 		# initialize ubb parser
@@ -451,7 +475,7 @@ class SpotTemplateHelper {
 	 * als een comma seperated lijst voor de dynatree initialisatie
 	 */
 	function categoryListToDynatree() {
-		return $this->_spotsOverview->compressCategorySelection($this->_params['parsedsearch']['categoryList']);
+		return $this->_spotsOverview->compressCategorySelection($this->_params['parsedsearch']['categoryList'], $this->_params['parsedsearch']['strongNotList']);
 	} # categoryListToDynatree
 	
 	/*
@@ -464,25 +488,20 @@ class SpotTemplateHelper {
 		#var_dump($this->_params['parsedsearch']['filterValueList']);
 		#var_dump($this->_params['parsedsearch']['sortFields']);
 
-		# als we niet aan het zoeken zijn, doen we niets
-		if (!isset($this->_params['parsedsearch'])) {
-			return '';;
-		} # if
 		
-		# Eerst bouwen de search[tree] value op
-		$searchTreeStr = '&amp;search[tree]=' . $this->_spotsOverview->compressCategorySelection($this->_params['parsedsearch']['categoryList']);
-		foreach($this->_params['parsedsearch']['strongNotList'] as $headCat => $subcatList) {
-			foreach($subcatList as $subcatValue) {
-				$searchTreeStr .= '~cat' . $headCat . '_' . $subcatValue . ',';
-			} # foreach
-		} # foreach
+		//$xml = $this->_spotsOverview->parsedSearchToXml($this->_params['parsedsearch']);
+		//$parsed = $this->_spotsOverview->xmlToParsedSearch($xml, $this->_currentSession);
+		//var_dump($parsed);
+		//die();
 		
-		# Vervolgens bouwen we de filtervalues op
-		$filterStr = '';
-		foreach($this->_params['parsedsearch']['filterValueList'] as $value) {
-			$filterStr .= '&amp;search[value][]=' . $value['fieldname'] . ':' . $value['operator'] . ':' . $value['value'];
-		} # foreach
-		
+		return $this->convertUnfilteredToQueryParams() . $this->convertTreeFilterToQueryParams() . $this->convertTextFilterToQueryParams();
+	} # convertFilterToQueryParams
+
+	/*
+	 * Converteer de huidige unfiltered setting
+	 * naar een nieuwe GET query
+	 */
+	function convertUnfilteredToQueryParams() {
 		# en eventueel als de huidige list unfiltered is, geef
 		# dat ook mee
 		$unfilteredStr = '';
@@ -490,16 +509,40 @@ class SpotTemplateHelper {
 			$unfilteredStr = '&amp;search[unfiltered]=true';
 		} # if
 
-		return $unfilteredStr . $searchTreeStr . $filterStr;
-	} # convertFilterToQueryParams
+		return $unfilteredStr;
+	} # convertUnfilteredToQueryParams()
 	
+	/*
+	 * Converteert de aanwezige filter boom naar een
+	 * nieuwe GET query
+	 */
+	function convertTreeFilterToQueryParams() {
+		# Bouwen de search[tree] value op
+		return '&amp;search[tree]=' . $this->_spotsOverview->compressCategorySelection($this->_params['parsedsearch']['categoryList'],
+														$this->_params['parsedsearch']['strongNotList']);
+	} # convertTreeFilterToQueryParams
+
+	/*
+	 * Converteert de aanwezige filter velden (behalve de boom)
+	 * naar een nieuwe GET query
+	 */
+	function convertTextFilterToQueryParams() {
+		# Vervolgens bouwen we de filtervalues op
+		$filterStr = '';
+		foreach($this->_params['parsedsearch']['filterValueList'] as $value) {
+			$filterStr .= '&amp;search[value][]=' . $value['fieldname'] . ':' . $value['operator'] . ':' . htmlspecialchars($value['value'], ENT_QUOTES, "utf-8");
+		} # foreach
+
+		return $filterStr;
+	} # convertTextFilterToQueryParams
 
 	/*
 	 * Geeft de huidige actieve sortering terug
 	 */
 	function getActiveSorting() {
 		$activeSort = array('field' => '',
-							'direction' => '');
+							'direction' => '',
+							'friendlyname' => '');
 		
 		# als we niet aan het sorteren zijn, doen we niets
 		if (!isset($this->_params['parsedsearch'])) {
@@ -512,6 +555,7 @@ class SpotTemplateHelper {
 			if (!$value['autoadded']) {
 				$activeSort['field'] = $value['field'];
 				$activeSort['direction'] = $value['direction'];
+				$activeSort['friendlyname'] = $value['friendlyname'];
 				break;
 			} # if
 		} # foreach
@@ -528,7 +572,7 @@ class SpotTemplateHelper {
 		$activeSort = $this->getActiveSorting();
 		
 		if (!empty($activeSort['field'])) {
-			return '&amp;sortby=' . $activeSort['field'] . '&amp;sortdir=' . $activeSort['direction'];
+			return '&amp;sortby=' . $activeSort['friendlyname'] . '&amp;sortdir=' . $activeSort['direction'];
 		} # if
 		
 		return '';
@@ -790,6 +834,12 @@ class SpotTemplateHelper {
 		$strings['validatesecgroup_groupdoesnotexist'] = 'Groep bestaat niet';
 		$strings['validatesecgroup_cannoteditbuiltin'] = 'Ingebouwde groepen mogen niet bewerkt worden';
 		
+		$strings['validatefilter_filterdoesnotexist'] = 'Filter bestaat niet';
+		$strings['validatefilter_invalidtitle'] = 'Ongeldige naam voor een filter';
+		$strings['validatefilter_nofileupload'] = 'Filter is niet geupload';
+		$strings['validatefilter_fileuploaderr'] = 'Fout tijdens uploaden van filter (%d)';
+		$strings['validatefilter_invaliduploadxml'] = 'Geuploade Spotweb filter file is ongeldig';
+		
 		return vsprintf($strings[$message[0]], $message[1]);
 	} # formMessageToString
 
@@ -818,6 +868,7 @@ class SpotTemplateHelper {
 	function clearDownloadList() {
 		# Controleer de users' rechten
 		$this->_spotSec->fatalPermCheck(SpotSecurity::spotsec_keep_own_downloadlist, '');
+		$this->_spotSec->fatalPermCheck(SpotSecurity::spotsec_keep_own_downloadlist, 'erasedls');
 		
 		$this->_db->clearSpotStateList(SpotDb::spotstate_Down, $this->_currentSession['user']['userid']);
 	} # clearDownloadList
@@ -908,6 +959,30 @@ class SpotTemplateHelper {
 	} # redirect()
 	
 	/*
+	 * Get users' filter list
+	 */
+	function getUserFilterList() {
+		$spotUser = new SpotUserSystem($this->_db, $this->_settings);
+		return $spotUser->getFilterList($this->_currentSession['user']['userid'], 'filter');
+	} # getUserFilterList
+
+	/*
+	 * Get specific filter
+	 */
+	function getUserFilter($filterId) {
+		$spotUser = new SpotUserSystem($this->_db, $this->_settings);
+		return $spotUser->getFilter($this->_currentSession['user']['userid'], $filterId);
+	} # getUserFilter
+
+	/*
+	 * Get index filter
+	 */
+	function getIndexFilter() {
+		$spotUser = new SpotUserSystem($this->_db, $this->_settings);
+		return $spotUser->getIndexFilter($this->_currentSession['user']['userid']);
+	} # getIndexFilter
+	
+	/*
 	 * Genereert een random string
 	 */
 	function getCleanRandomString($len) {
@@ -915,5 +990,20 @@ class SpotTemplateHelper {
 		$spotSigning = new SpotSigning();
 		return substr($spotParser->specialString(base64_encode($spotSigning->makeRandomStr($len))), 0, $len);
 	} # getRandomStr
+	
+	/*
+	 * Geeft de naam van de nzbhandler terug
+	 */
+	function getNzbHandlerName(){
+		return $this->_nzbHandler->getName();
+	} # getNzbHandlerName
+	
+	/*
+	 * Geeft een string met gesupporte API functies terug of false wanneer er geen API support is
+	 * voor de geselecteerde NzbHandler
+	 */
+	function getNzbHandlerApiSupport(){
+		return $this->_nzbHandler->hasApiSupport();
+	} # getNzbHandlerApiSupport
 	
 } # class SpotTemplateHelper

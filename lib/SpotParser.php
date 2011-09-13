@@ -322,14 +322,14 @@ class SpotParser {
 		switch(strtolower($c)) {
 			case 'q' :
 			{
-				while ($startIndex < strlen($input)) {
-					$ch2 = $strInput[$startIndex];
+				while ($startIndex < strlen($inputStr)) {
+					$ch2 = $inputStr[$startIndex];
 					$chArray = null;
 
 					switch($ch2) {
 						case '=': {
-							if ($startIndex >= (strlen($input) - 2)) {
-								$chArray = substr($strInput, $startIndex + 1, 2);
+							if ($startIndex >= (strlen($inputStr) - 2)) {
+								$chArray = substr($inputStr, $startIndex + 1, 2);
 							} # if
 
 							if ($chArray == null) {

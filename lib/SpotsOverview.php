@@ -175,7 +175,7 @@ class SpotsOverview {
 	 * Bereid een string met daarin categorieen voor en 'expand' 
 	 * die naar een complete string met alle subcategorieen daarin
 	 */
-	private function prepareCategorySelection($dynaList) {
+	public function prepareCategorySelection($dynaList) {
 		$strongNotList = array();
 		$categoryList = array();
 		
@@ -270,7 +270,9 @@ class SpotsOverview {
 				$newTreeQuery .= "," . $dynaList[$i];
 			} # else
 		} # for
-		if ($newTreeQuery[0] == ",") { $newTreeQuery = substr($newTreeQuery, 1); }
+		if ((!empty($newTreeQuery)) && ($newTreeQuery[0] == ",")) { 
+			$newTreeQuery = substr($newTreeQuery, 1); 
+		} # if
 
 		#
 		# Vanaf hier hebben we de geprepareerde lijst - oftewel de lijst met categorieen 
@@ -438,7 +440,7 @@ class SpotsOverview {
 			# Een combinatie van oude filters en nieuwe kan voorkomen, we 
 			# willen dan niet met deze conversie de normaal soorten filters
 			# overschrijven.
-			if (!is_array($search['value'])) {
+			if ((!isset($search['value'])) || (!is_array($search['value']))) {
 				$search['value'] = array();
 			} # if
 			$search['value'][] = $search['type'] . ':=:' . $search['text'];
@@ -491,6 +493,7 @@ class SpotsOverview {
 		$additionalFields = array();
 		$additionalTables = array();
 		$sortFields = array();
+		$textSearchFields = array();
 		
 		# Een lookup tabel die de zoeknaam omzet naar een database veldnaam
 		$filterFieldMapping = array('filesize' => 's.filesize',
@@ -519,7 +522,7 @@ class SpotsOverview {
 			} # if
 
 			# valideer eerst de operatoren
-			if (!in_array($tmpFilterOperator, array('>', '<', '>=', '<=', '='))) {
+			if (!in_array($tmpFilterOperator, array('>', '<', '>=', '<=', '=', '!='))) {
 				break;
 			} # if
 
@@ -536,23 +539,12 @@ class SpotsOverview {
 			# winst er mee nemen.
 			#
 			if (in_array($tmpFilterFieldname, array('tag', 'poster', 'titel'))) {
-				$parsedTextQueryResult = $this->_db->createTextQuery($filterFieldMapping[$tmpFilterFieldname], $tmpFilterValue);
-				$filterValueSql[] = ' (' . $parsedTextQueryResult['filter'] . ') ';
-				$additionalTables = array_merge($additionalTables, $parsedTextQueryResult['additionalTables']);
-				
-				# We voegen deze extended textqueries toe aan de filterlist als
-				# relevancy veld, hiermee kunnen we dan ook zoeken op de relevancy
-				# wat het net wat interessanter maakt
-				if ($parsedTextQueryResult['sortable']) {
-					# We zouden in theorie meerdere van deze textsearches kunnen hebben, dan 
-					# sorteren we ze in de volgorde waarop ze binnenkwamen 
-					$tmpSortCounter = count($additionalFields);
-					
-					$additionalFields[] = $parsedTextQueryResult['filter'] . ' AS searchrelevancy' . $tmpSortCounter;
-					$sortFields[] = array('field' => 'searchrelevancy' . $tmpSortCounter,
-										  'direction' => 'DESC',
-										  'autoadded' => true);
-				} # if
+				#
+				# Sommige databases (sqlite bv.) willen al hun fulltext searches in een
+				# function aanroep. We zoeken hier dus alle fulltext searchable velden samen
+				# en creeeren de textfilter later in 1 keer.
+				#
+				$textSearchFields[] = array('fieldname' => $filterFieldMapping[$tmpFilterFieldname], 'value' => $tmpFilterValue);
 			} elseif (in_array($tmpFilterFieldname, array('new', 'downloaded', 'watch', 'seen'))) {
 				# 
 				# Er zijn speciale veldnamen welke we gebruiken als dummies om te matchen 
@@ -610,6 +602,22 @@ class SpotsOverview {
 				$filterValueSql[] = ' (' . $filterFieldMapping[$tmpFilterFieldname] . ' ' . $tmpFilterOperator . ' '  . $tmpFilterValue . ') ';
 			} # if
 		} # foreach
+
+		# 
+		# Nu controleren we of we een of meer $textSearchFields hebben waarop we 
+		# eventueel een fulltext search zouden kunnen loslaten. Als we die hebben
+		# vragen we aan de specifiek database engine om deze zoekopdracht te 
+		# optimaliseren.
+		#
+		if (!empty($textSearchFields)) {
+			$parsedTextQueryResult = $this->_db->createTextQuery($textSearchFields);
+
+			$filterValueSql = array_merge($filterValueSql, $parsedTextQueryResult['filterValueSql']);
+			$additionalTables = array_merge($additionalTables, $parsedTextQueryResult['additionalTables']);
+			$additionalFields = array_merge($additionalFields, $parsedTextQueryResult['additionalFields']);
+			$sortFields = array_merge($sortFields, $parsedTextQueryResult['sortFields']);
+		} # if
+
 		
 		return array($filterValueSql, $additionalFields, $additionalTables, $sortFields);
 	} # filterValuesToSql
@@ -618,13 +626,20 @@ class SpotsOverview {
 	 * Genereert de lijst met te sorteren velden
 	 */
 	private function prepareSortFields($sort, $sortFields) {
-		$VALID_SORT_FIELDS = array('category', 'poster', 'title', 'filesize', 'stamp', 'subcata', 'spotrating', 'commentcount');
+		$VALID_SORT_FIELDS = array('category' => 1, 
+								   'poster' => 1, 
+								   'title' => 1, 
+								   'filesize' => 1, 
+								   'stamp' => 1, 
+								   'subcata' => 1, 
+								   'spotrating' => 1, 
+								   'commentcount' => 1);
 
-		if ((!isset($sort['field'])) || (in_array($sort['field'], $VALID_SORT_FIELDS) === false)) {
+		if ((!isset($sort['field'])) || (!isset($VALID_SORT_FIELDS[$sort['field']]))) {
 			# We sorteren standaard op stamp, maar alleen als er vanuit de query
 			# geen expliciete sorteermethode is meegegeven
 			if (empty($sortFields)) {
-				$sortFields[] = array('field' => 's.stamp', 'direction' => 'DESC', 'autoadded' => true);
+				$sortFields[] = array('field' => 's.stamp', 'direction' => 'DESC', 'autoadded' => true, 'friendlyname' => null);
 			} # if
 		} else {
 			if (strtoupper($sort['direction']) != 'ASC') {
@@ -634,7 +649,10 @@ class SpotsOverview {
 			# Omdat deze sortering expliciet is opgegeven door de user, geven we deze voorrang
 			# boven de automatisch toegevoegde sorteringen en zetten hem dus aan het begin
 			# van de sorteer lijst.
-			array_unshift($sortFields, array('field' => 's.' . $sort['field'], 'direction' => $sort['direction'], 'autoadded' => false));
+			array_unshift($sortFields, array('field' => 's.' . $sort['field'], 
+											 'direction' => $sort['direction'], 
+											 'autoadded' => false, 
+											 'friendlyname' => $sort['field']));
 		} # else
 		
 		return $sortFields;
@@ -646,14 +664,9 @@ class SpotsOverview {
 	 * Zie de comments bij prepareCategorySelection() voor uitleg wat dit
 	 * precies betekent
 	 */
-	function compressCategorySelection($categoryList) {
+	function compressCategorySelection($categoryList, $strongNotList) {
 		$compressedList = '';
-		
-		# controleer of de lijst geldig is
-		if ((!isset($categoryList['cat'])) || (!is_array($categoryList['cat']))) {
-			return $compressedList;
-		} # if
-		
+
 		#
 		# Nu, we gaan feitelijk elke category die we hebben en elke subcategory daaronder
 		# aflopen om te zien of alle vereiste elementen er zijn. Als die er zijn, dan unsetten we
@@ -714,7 +727,14 @@ class SpotsOverview {
 				} # else
 			} # if
 		} # foreach
-		
+
+		# en voeg de strong not lijst toe
+		foreach($strongNotList as $headCat => $subcatList) {
+			foreach($subcatList as $subcatValue) {
+				$compressedList .= '~cat' . $headCat . '_' . $subcatValue . ',';
+			} # foreach
+		} # foreach
+
 		return $compressedList;
 	} # compressCategorySelection
 
@@ -722,7 +742,7 @@ class SpotsOverview {
 	 * Converteer een array met search termen (tree, type en value) naar een SQL
 	 * statement dat achter een WHERE geplakt kan worden.
 	 */
-	function filterToQuery($search, $sort, $currentSession) {
+	function filterToQuery($search, $sort, $currentSession, $indexFilter) {
 		SpotTiming::start(__FUNCTION__);
 		
 		$isUnfiltered = false;
@@ -750,7 +770,7 @@ class SpotsOverview {
 						 'strongNotList' => array(),
 					     'filterValueList' => array(),
 						 'unfiltered' => false,
-					     'sortFields' => array(array('field' => 'stamp', 'direction' => 'DESC', 'autoadded' => true)));
+					     'sortFields' => array(array('field' => 'stamp', 'direction' => 'DESC', 'autoadded' => true, 'friendlyname' => null)));
 		} # if
 
 		#
@@ -763,7 +783,7 @@ class SpotsOverview {
 		# als er gevraagd om de filters te vergeten (en enkel op het woord te zoeken)
 		# resetten we gewoon de boom
 		if ((isset($search['unfiltered'])) && (($search['unfiltered'] === 'true'))) {
-			$search = array_merge($search, $this->_settings->get('index_filter'));
+			$search = array_merge($search, $indexFilter);
 			$isUnfiltered = true;
 		} # if
 		

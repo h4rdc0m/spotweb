@@ -1,7 +1,4 @@
 <?php
-require_once "Math/BigInteger.php";
-require_once "Crypt/RSA.php";
-
 class SpotSigning {
 
 	public function __construct() {
@@ -143,7 +140,7 @@ class SpotSigning {
 		} # if
 		
 		return $verified;
-	} # verifySpotHeader()
+	} # verifyFullSpot()
 	
 	/*
 	 * Helper functie om een comment header te verifieeren

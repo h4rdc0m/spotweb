@@ -11,7 +11,7 @@ try {
 	SpotTiming::start('settings');
 	require_once "settings.php";
 	SpotTiming::stop('settings');
-
+	
 	# database object
 	$db = new SpotDb($settings['db']);
 	$db->connect();
@@ -34,6 +34,12 @@ try {
 		die("Globale settings zijn gewijzigd, draai upgrade-db.php aub" . PHP_EOL);
 	} # if
 
+	# Controleer dat er nergens iets mis staat in de ownsettings.php oid dat output
+	# genereerd
+	if (headers_sent()) {
+		die("ownsettings.php geeft al output, zorg dat je ownsettings.php niet afgesloten is met ?> en dat er niets staat voor de <?");
+	} # if
+	
 	# helper functions for passed variables
 	$req = new SpotReq();
 	$req->initialize($settings);
@@ -78,7 +84,7 @@ try {
 	switch($page) {
 		case 'render' : {
 				$page = new SpotPage_render($db, $settings, $currentSession, $req->getDef('tplname', ''),
-							Array('search' => $req->getDef('search', $settings->get('index_filter')),
+							Array('search' => $req->getDef('search', $spotUserSystem->getIndexFilter($currentSession['user']['userid'])),
 								  'data' => $req->getDef('data', array()),
 								  'messageid' => $req->getDef('messageid', ''),
 								  'pagenr' => $req->getDef('pagenr', 0),
@@ -172,7 +178,7 @@ try {
 
 		case 'rss' : {
 			$page = new SpotPage_rss($db, $settings, $currentSession,
-					Array('search' => $req->getDef('search', $settings->get('index_filter')),
+					Array('search' => $req->getDef('search', $spotUserSystem->getIndexFilter($currentSession['user']['userid'])),
 						  'page' => $req->getDef('page', 0),
 						  'sortby' => $req->getDef('sortby', ''),
 						  'sortdir' => $req->getDef('sortdir', ''),
@@ -212,6 +218,18 @@ try {
 				break;
 		} # editsecgroup
 
+		case 'editfilter' : {
+				$page = new SpotPage_editfilter($db, $settings, $currentSession,
+							Array('editfilterform' => $req->getForm('editfilterform', array('submitaddfilter', 'submitremovefilter', 'submitchangefilter', 'submitreorder', 'submitdiscardfilters', 'setfiltersasdefault', 'submitexportfilters', 'submitimportfilters')),
+								  'orderfilterslist' => $req->getDef('orderfilterslist', array()),
+								  'search' => $req->getDef('search', array()),
+								  'sorton' => $req->getDef('sortby', ''),
+								  'sortorder' => $req->getDef('sortdir', ''),
+							      'filterid' => $req->getDef('filterid', 0)));
+				$page->render();
+				break;
+		} # editfilter
+
 		case 'edituser' : {
 				$page = new SpotPage_edituser($db, $settings, $currentSession,
 							Array('edituserform' => $req->getForm('edituserform', array('submitedit', 'submitdelete', 'submitresetuserapi', 'removeallsessions')),
@@ -221,7 +239,7 @@ try {
 		} # edituser
 
 		case 'listusers' : {
-				$page = new SpotPage_listusers($db, $settings, $currentSession, array());
+				$page = new SpotPage_listusers($db, $settings, $currentSession);
 				$page->render();
 				break;
 		} # listusers
@@ -254,12 +272,26 @@ try {
 			break;
 		} # sabapi
 
+		case 'nzbhandlerapi' : {
+			$page = new SpotPage_nzbhandlerapi($db, $settings, $currentSession);
+			$page->render();
+			break;
+		} # nzbhandlerapi
+		
+		case 'twitteroauth' : {
+			$page = new SpotPage_twitteroauth($db, $settings, $currentSession,
+					Array('action' => $req->getDef('action', ''),
+						  'pin' => $req->getDef('pin', '')));
+			$page->render();
+			break;
+		} # twitteroauth
+
 		default : {
 				if (@$_SERVER['HTTP_X_PURPOSE'] == 'preview') {
 					$page = new SpotPage_speeddial($db, $settings, $currentSession);
 				} else {
 					$page = new SpotPage_index($db, $settings, $currentSession,
-							Array('search' => $req->getDef('search', $settings->get('index_filter')),
+							Array('search' => $req->getDef('search', $spotUserSystem->getIndexFilter($currentSession['user']['userid'])),
 								  'pagenr' => $req->getDef('pagenr', 0),
 								  'sortby' => $req->getDef('sortby', ''),
 								  'sortdir' => $req->getDef('sortdir', ''),

@@ -24,18 +24,21 @@
 				<span class="scroll"><input type="checkbox" name="filterscroll" id="filterscroll" value="Scroll" title="Wissel tussen vaste en meescrollende sidebar"><label>&nbsp;</label></span>
 
 <?php if ($tplHelper->allowed(SpotSecurity::spotsec_perform_search, '')) { ?>
-				<form id="filterform" action="">
+				<form id="filterform" action="" onsubmit="submitFilterBtn(this)">
+				<input type="hidden" id="searchfilter-includeprevfilter-toggle" name="search[includeinfilter]" value="false" />
 <?php
 	// Omdat we nu op meerdere criteria tegelijkertijd kunnen zoeken is dit onmogelijk
 	// om 100% juist in de UI weer te geven. We doen hierdoor een gok die altijd juist
 	// is zolang je maar zoekt via de UI.
-	// Voor voor-gedefinieerde filters en dergelijke zal dit maar half juist zijn
+	// Voor uitgebreide filters tonen we een lijst met op dat moment actieve filters
 	$searchType = 'Titel'; 
 	$searchText = '';
 	$sortType = 'stamp';
 	$sortOrder = 'DESC';
 	
-	# Zoek nu een filter op dat eventueel matched, dan gebruiken we die
+	# Zoek nu een filter op dat eventueel matched, dan gebruiken we die. We willen deze 
+	# boom toch doorlopen ook al is er meer dan 1 filter, anders kunnen we de filesize
+	# niet juist zetten
 	foreach($parsedsearch['filterValueList'] as $filterType) {
 		if (in_array($filterType['fieldname'], array('Titel', 'Poster', 'Tag', 'UserID'))) {
 			$searchType = $filterType['fieldname'];
@@ -50,8 +53,22 @@
 	# Als er een sortering is die we kunnen gebruiken, dan willen we ook dat
 	# in de UI weergeven
 	$tmpSort = $tplHelper->getActiveSorting();
-	$sortType = strtolower($tmpSort['field']);
+	$sortType = strtolower($tmpSort['friendlyname']);
 	$sortOrder = strtolower($tmpSort['direction']);
+
+	# als er meer dan 1 filter is, dan tonen we dat als een lijst
+	if (count($parsedsearch['filterValueList']) > 1) {
+		$searchText = '';
+		$searchType = 'Titel';
+	} # if
+
+	# Zorg er voor dat de huidige filterwaardes nog beschikbaar zijn
+	foreach($parsedsearch['filterValueList'] as $filterType) {
+		if (in_array($filterType['fieldname'], array('Titel', 'Poster', 'Tag', 'UserID'))) {
+			echo '<input data-currentfilter="true" type="hidden" name="search[value][]" value="' . $filterType['fieldname'] . ':=:'  . htmlspecialchars($filterType['value'], ENT_QUOTES, 'utf-8') . '">';
+		} # if
+	} # foreach
+	
 ?>
 					<div><input type="hidden" id="search-tree" name="search[tree]" value="<?php echo $tplHelper->categoryListToDynatree(); ?>"></div>
 <?php
@@ -60,7 +77,7 @@
 		$filterColCount++;
 	} # if
 ?>
-					<div class="search"><input class='searchbox' type="text" name="search[text]" value="<?php echo htmlspecialchars($searchText); ?>"><input type='submit' class="filtersubmit" value='>>' title='Zoeken'></div>
+					<div class="search"><input class='searchbox' type="text" name="search[text]" value="<?php echo htmlspecialchars($searchText); ?>"><input type='submit' class="filtersubmit" value='+' onclick='$("#searchfilter-includeprevfilter-toggle").val("true");' title='Zoeken in huidige filters'><input type='submit' class="filtersubmit default" onclick='$("#searchfilter-includeprevfilter-toggle").val(""); return true;' value='>>' title='Zoeken'></div>
 
 					<div class="sidebarPanel advancedSearch">
 					<h4><a class="toggle" onclick="toggleSidebarPanel('.advancedSearch')" title='Sluit "Advanced Search"'>[x]</a>Zoeken op:</h4>
@@ -73,6 +90,24 @@
 <?php } ?>
 						</ul>
 
+<?php
+	if (count($parsedsearch['filterValueList']) > 0) {
+?>
+						<h4>Actieve filters:</h4>
+						<table class='search currentfilterlist'>
+<?php
+	foreach($parsedsearch['filterValueList'] as $filterType) {
+		if (in_array($filterType['fieldname'], array('Titel', 'Poster', 'Tag', 'UserID'))) {
+?>
+							<tr> <th> <?php echo $filterType['fieldname']; ?> </th> <td> <?php echo $filterType['value']; ?> </td> <td> <a href="javascript:location.href=removeFilter('?page=index<?php echo addcslashes(urldecode($tplHelper->convertFilterToQueryParams()), "\\\'\"&\n\r<>"); ?>', '<?php echo $filterType['fieldname']; ?>', '<?php echo $filterType['operator']; ?>', '<?php echo addcslashes(htmlspecialchars($filterType['value'], ENT_QUOTES, 'utf-8'), "\\\'\"&\n\r<>"); ?>');">x</a> </td> </tr>
+<?php
+		} # if
+	} # foreach
+?>
+						</table>
+<?php						
+	}
+?>
 						<h4>Sorteren op:</h4>
 						<input type="hidden" name="sortdir" value="<?php if($sortType == "stamp" || $sortType == "spotrating" || $sortType == "commentcount") {echo "DESC";} else {echo "ASC";} ?>">
 						<ul class="search sorting threecol">
@@ -112,8 +147,13 @@
 							<li> <input type="checkbox" name="search[unfiltered]" value="true" <?php echo $parsedsearch['unfiltered'] == "true" ? 'checked="checked"' : '' ?>>
 							<label>Categori&euml;n <?php echo $parsedsearch['unfiltered'] == "true" ? '' : 'niet ' ?>gebruiken</label> </li>
 						</ul>
-					</div>
-				</form>
+
+						<br>
+						<h4>Filters</h4>
+						<br>
+						<a onclick="return openDialog('editdialogdiv', 'Voeg een filter toe', '?page=render&amp;tplname=editfilter&amp;data[isnew]=true<?php echo $tplHelper->convertTreeFilterToQueryParams() .$tplHelper->convertTextFilterToQueryParams() . $tplHelper->convertSortToQueryParams(); ?>', 'editfilterform', true, null); " class="greyButton">Sla opdracht op als filter</a>
+				</div>
+			</form>
 <?php } # if perform search ?>
 
 				<div class="sidebarPanel userPanel">
@@ -168,15 +208,21 @@
 
 				<div class="sidebarPanel sabnzbdPanel">
 <?php if ($tplHelper->allowed(SpotSecurity::spotsec_use_sabapi, '')) { ?>
-					<h4><a class="toggle" onclick="toggleSidebarPanel('.sabnzbdPanel')" title='Sluit "SabNZBd paneel"'>[x]</a>SabNZBd</h4>
+					<h4><a class="toggle" onclick="toggleSidebarPanel('.sabnzbdPanel')" title='Sluit "<?php echo $tplHelper->getNzbHandlerName(); ?> paneel"'>[x]</a><?php echo $tplHelper->getNzbHandlerName(); ?></h4>
 <?php 
-	$nzbHandling = $currentSession['user']['prefs']['nzbhandling'];
-	$sabnzbd = $nzbHandling['sabnzbd']; 
-	$apikey = $tplHelper->apiToHash($sabnzbd['apikey']);
-	echo "<input class='apikey' type='hidden' value='".$apikey."'>";
-?>
+		$apikey = $tplHelper->apiToHash($currentSession['user']['apikey']);
+		echo "<input class='apikey' type='hidden' value='".$apikey."'>";
+		if ($tplHelper->getNzbHandlerApiSupport() === false)
+		{?>
 					<table class="sabInfo" summary="SABnzbd infomatie">
+						<tr><td>De geselecteerde methode om NZB's te downloaden heeft geen panel support.</td></tr>
+					</table>			
+<?php	}
+		else
+		{
+?>					<table class="sabInfo" summary="SABnzbd infomatie">
 						<tr><td>Status:</td><td class="state"></td></tr>
+						<tr><td>Opslag (vrij):</td><td class="diskspace"></td></tr>
 						<tr><td>Snelheid:</td><td class="speed"></td></tr>
 						<tr><td>Max. snelheid:</td><td class="speedlimit"></td></tr>
 						<tr><td>Te gaan:</td><td class="timeleft"></td></tr>
@@ -187,7 +233,8 @@
 					<table class="sabGraphData" summary="SABnzbd Graph Data" style="display:none;"><tbody><tr><td></td></tr></tbody></table>
 					<h4>Wachtrij</h4>
 					<table class="sabQueue" summary="SABnzbd queue"><tbody><tr><td></td></tr></tbody></table>
-<?php } ?>
+<?php 	}
+	  } ?>
 				</div>
 			</div>
 
@@ -199,6 +246,7 @@
 			$newCount = ($count_newspots && stripos($quicklink[2], 'New:0')) ? $tplHelper->getNewCountForFilter($quicklink[2]) : "";
 ?>
 					<li> <a class="filter <?php echo " " . $quicklink[3]; if (parse_url($tplHelper->makeSelfUrl("full"), PHP_URL_QUERY) == parse_url($tplHelper->makeBaseUrl("full") . $quicklink[2], PHP_URL_QUERY)) { echo " selected"; } ?>" href="<?php echo $quicklink[2]; ?>">
+					<a class="filter <?php if (parse_url($tplHelper->makeSelfUrl("full"), PHP_URL_QUERY) == parse_url($tplHelper->makeBaseUrl("full") . $quicklink[2], PHP_URL_QUERY)) { echo " selected"; } ?>" href="<?php echo $quicklink[2]; ?>">
 					<img src='<?php echo $quicklink[1]; ?>' alt='<?php echo $quicklink[0]; ?>'><?php echo $quicklink[0]; if ($newCount) { echo "<span class='newspots'>".$newCount."</span>"; } ?></a>
 <?php 	}
 	} ?>
@@ -208,40 +256,58 @@
 					<ul class="filterlist filters">
 
 <?php
-	foreach($filters as $filter) {
-		$strFilter = $tplHelper->getPageUrl('index') . '&amp;search[tree]=' . $filter[2];
-		$newCount = ($count_newspots) ? $tplHelper->getNewCountForFilter($strFilter) : "";
-?>
-						<li<?php if($filter[2]) { echo " class='". $tplHelper->filter2cat($filter[2]) ."'"; } ?>>
-						<a class="filter<?php echo " " . $filter[3]; if ($tplHelper->makeSelfUrl("path") == $strFilter) { echo " selected"; } ?>" href="<?php echo $strFilter;?>">
-						<img src='<?php echo $filter[1]; ?>' alt='<?php echo $filter[0]; ?>'><?php echo $filter[0]; if ($newCount) { echo "<span onclick=\"gotoNew('".$strFilter."')\" class='newspots' title='Laat nieuwe spots in filter &quot;".$filter[0]."&quot; zien'>$newCount</span>"; } ?><span class='toggle' title='Filter inklappen' onclick='toggleFilter(this)'>&nbsp;</span></a>
-<?php
-		if (!empty($filter[4])) {
-			echo "\t\t\t\t\t\t\t<ul class='filterlist subfilterlist'>\r\n";
-			foreach($filter[4] as $subFilter) {
-				$strFilter = $tplHelper->getPageUrl('index') . '&amp;search[tree]=' . $subFilter[2];
-				$newSubCount = ($count_newspots) ? $tplHelper->getNewCountForFilter($strFilter) : "";
-?>
-						<li> <a class="filter<?php echo " " . $subFilter[3]; if ($tplHelper->makeSelfUrl("path") == $strFilter) { echo " selected"; } ?>" href="<?php echo $strFilter;?>">
-						<img src='<?php echo $subFilter[1]; ?>' alt='<?php echo $subFilter[0]; ?>'><?php echo $subFilter[0]; if ($newSubCount) { echo "<span onclick=\"gotoNew('".$strFilter."')\" class='newspots' title='Laat nieuwe spots in filter &quot;".$subFilter[0]."&quot; zien'>$newSubCount</span>"; } ?></a>
-<?php
-				if (!empty($subFilter[4])) {
-					echo "\t\t\t\t\t\t\t<ul class='filterlist subfilterlist'>\r\n";
-					foreach($subFilter[4] as $sub2Filter) {
-						$strFilter = $tplHelper->getPageUrl('index') . '&amp;search[tree]=' . $sub2Filter[2];
-						$newSub2Count = ($count_newspots) ? $tplHelper->getNewCountForFilter($strFilter) : "";
-		?>
-						<li> <a class="filter<?php echo " " . $sub2Filter[3]; if ($tplHelper->makeSelfUrl("path") == $strFilter) { echo " selected"; } ?>" href="<?php echo $strFilter;?>">
-						<img src='<?php echo $sub2Filter[1]; ?>' alt='<?php echo $subFilter[0]; ?>'><?php echo $sub2Filter[0]; if ($newSub2Count) { echo "<span onclick=\"gotoNew('".$strFilter."')\" class='newspots' title='Laat nieuwe spots in filter &quot;".$sub2Filter[0]."&quot; zien'>$newSub2Count</span>"; } ?></a>
-		<?php
-					} # foreach 
-					echo "\t\t\t\t\t\t\t</ul>\r\n";
-				} # is_array
+	function processFilters($tplHelper, $count_newspots, $filterList) {
+		$selfUrl = $tplHelper->makeSelfUrl("path");
+
+		foreach($filterList as $filter) {
+			$strFilter = $tplHelper->getPageUrl('index') . '&amp;search[tree]=' . $filter['tree'];
+			if (!empty($filter['valuelist'])) {
+				foreach($filter['valuelist'] as $value) {
+					$strFilter .= '&amp;search[value][]=' . $value;
+				} # foreach
+			} # if
+			if (!empty($filter['sorton'])) {
+				$strFilter .= '&amp;sortby=' . $filter['sorton'] . '&amp;sortdir=' . $filter['sortorder'];
+			} # if
+			$newCount = ($count_newspots) ? $tplHelper->getNewCountForFilter($strFilter) : "";
+
+			# escape the filter vlaues
+			$filter['title'] = htmlentities($filter['title'], ENT_NOQUOTES, 'UTF-8');
+			$filter['icon'] = htmlentities($filter['icon'], ENT_NOQUOTES, 'UTF-8');
 			
-			} # foreach 
-			echo "\t\t\t\t\t\t\t</ul>\r\n";
-		} # is_array
-	} # foreach
+			# Output de HTML
+			echo '<li class="'. $tplHelper->filter2cat($filter['tree']) .'">';
+			echo '	<a class="filter ' . $filter['title']; 
+			
+			if ($selfUrl == $strFilter) { 
+				echo ' selected';
+			} # if
+			
+			echo '" href="' . $strFilter . '">';
+			echo '<img src="images/icons/' . $filter['icon'] . '" alt="' . $filter['title'] . '">' . $filter['title'];
+			if ($newCount) { 
+				echo "<span onclick=\"gotoNew('".$strFilter."')\" class='newspots' title='Laat nieuwe spots in filter &quot;".$filter['title']."&quot; zien'>$newCount</span>"; 
+			} # if 
+
+			# als er children zijn, moeten we de category kunnen inklappen
+			if (!empty($filter['children'])) {
+				echo '<span class="toggle" title="Filter inklappen" onclick="toggleFilter(this)">&nbsp;</span>';
+			} # if
+			
+			echo '</a>';
+			
+			# Als er children zijn, output die ool
+			if (!empty($filter['children'])) {
+				echo '<ul class="filterlist subfilterlist">';
+				processFilters($tplHelper, $count_newspots, $filter['children']);
+				echo '</ul>';
+			} # if
+			
+			echo '</li>' . PHP_EOL;
+		} # foreach
+	} # processFilters
+	
+	processFilters($tplHelper, $count_newspots, $filters);
 ?>
 					</ul>
 
@@ -257,7 +323,7 @@
 						<li><a href="<?php echo $tplHelper->makeRetrieveUrl(); ?>" onclick="retrieveSpots()" class="greyButton retrievespots">Update Spots</a></li>
 <?php 		}
 		} ?>
-<?php if ($tplHelper->allowed(SpotSecurity::spotsec_keep_own_downloadlist, '')) { ?>
+<?php if (($tplHelper->allowed(SpotSecurity::spotsec_keep_own_downloadlist, '')) && ($tplHelper->allowed(SpotSecurity::spotsec_keep_own_downloadlist, 'erasedls'))) { ?>
 						<li><a href="<?php echo $tplHelper->getPageUrl('erasedls'); ?>" onclick="eraseDownloads()" class="greyButton erasedownloads">Verwijder downloadgeschiedenis</a></li>
 <?php } ?>
 <?php if ($tplHelper->allowed(SpotSecurity::spotsec_keep_own_seenlist, '')) { ?>

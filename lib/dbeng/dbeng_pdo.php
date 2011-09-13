@@ -96,7 +96,11 @@ abstract class dbeng_pdo extends dbeng_abs {
     function rows() {
 		return $this->_rows_changed;
 	} # rows()
-	 
+
+	function lastInsertId($tableName) {
+		return $this->_conn->lastInsertId($tableName . "_id_seq");
+	} # lastInsertId
+	
 	 /**
      * Fetch alleen het eerste resultaat
      * @param array $s
@@ -132,5 +136,4 @@ abstract class dbeng_pdo extends dbeng_abs {
 		return $tmpArray;
 	} # arrayQuery
 
-	
 } # class

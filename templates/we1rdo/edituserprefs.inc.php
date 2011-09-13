@@ -1,6 +1,4 @@
 <?php
-	require "includes/header.inc.php";
-
 if (!empty($edituserprefsresult)) {
 	//include 'includes/form-xmlresult.inc.php';
 	//echo formResult2Xml($edituserprefsresult, $formmessages, $tplHelper);
@@ -11,6 +9,7 @@ if (!empty($edituserprefsresult)) {
 	} # if
 } # if
 
+require "includes/header.inc.php";
 include "includes/form-messages.inc.php";
 ?>
 </div>
@@ -26,21 +25,18 @@ include "includes/form-messages.inc.php";
 <?php if ($tplHelper->allowed(SpotSecurity::spotsec_download_integration, '')) { ?>
 			<li><a href="#edituserpreftab-2"><span>NZB afhandeling</span></a></li>
 <?php } ?>
-<!--
-			<li><a href="#edituserpreftab-3"><span>Filters</span></a></li>
--->
+<?php if ($tplHelper->allowed(SpotSecurity::spotsec_keep_own_filters, '')) { ?>
+			<li><a href="?page=render&tplname=listfilters" title="Filters"><span>Filters</span></a></li>
+<?php } ?>
 <?php if ($tplHelper->allowed(SpotSecurity::spotsec_send_notifications_services, '') && $tplHelper->allowed(SpotSecurity::spotsec_send_notifications_types, '')) { ?>
 			<li><a href="#edituserpreftab-4"><span>Notificaties</span></a></li>
 <?php } ?>
 <?php if ($tplHelper->allowed(SpotSecurity::spotsec_allow_custom_stylesheet, '')) { ?>
-			<li><a href="#edituserpreftab-5"><span>Eigen CSS stylesheet</span></a></li>
+			<li><a href="#edituserpreftab-5"><span>Eigen CSS</span></a></li>
 <?php } ?>
 	
 		</ul>
 			
-		<!-- [ ] Index filter -->
-		<!-- [ ] Filters ? -->
-
 		<div id="edituserpreftab-1" class="ui-tabs-hide">
 			<fieldset>
 				<dl>
@@ -68,7 +64,7 @@ include "includes/form-messages.inc.php";
 						<select name="edituserprefsform[template]">
 							<option <?php if ($edituserprefsform['template'] == 'we1rdo') { echo 'selected="selected"'; } ?> value="we1rdo" selected>we1rdo (standaard)</option>
 <!--
-	Deze zijn uitgeocmmentarieerd omdat als je deze kiest, je niet meer terug kan aangezien beide
+	Deze zijn uitgecommentarieerd omdat als je deze kiest, je niet meer terug kan aangezien beide
 	templates geen edit-preferences geimplementeerd hebben
 	
 							<option value="splendid">Splendid</option>
@@ -106,6 +102,11 @@ include "includes/form-messages.inc.php";
 <?php if ($tplHelper->allowed(SpotSecurity::spotsec_retrieve_nzb, '')) { ?>
 					<dt><label for="edituserprefsform[show_multinzb]">Toon een checkbox naast elke spot om meerdere NZB files in een keer te downloaden?</label></dt>
 					<dd><input type="checkbox" name="edituserprefsform[show_multinzb]" <?php if ($edituserprefsform['show_multinzb']) { echo 'checked="checked"'; } ?>></dd>
+<?php } ?>
+
+<?php if ($tplHelper->allowed(SpotSecurity::spotsec_keep_own_filters, '')) { ?>
+					<dt><label for="edituserprefsform[_dummy_prevent_porn]">Erotica spots op de index verbergen?</label></dt>
+					<dd><input type="checkbox" name="edituserprefsform[_dummy_prevent_porn]" <?php $tmpIndexFilter = $tplHelper->getIndexFilter(); if (stripos($tmpIndexFilter['tree'], '~cat0_z3') !== false) { echo 'checked="checked"'; } ?>></dd>
 <?php } ?>
 					
 					<dt><label for="edituserprefsform[nzb_search_engine]">Welke zoekmachine moet er gebruikt worden?</label></dt>
@@ -204,15 +205,6 @@ include "includes/form-messages.inc.php";
 		</div>
 <?php } ?>
 
-<!--	
-		<div id="edituserpreftab-3">
-			<fieldset>
-				<dl>
-				</dl>
-			</fieldset>
-		</div>
--->
-
 <!-- Notificaties -->
 <?php if ($tplHelper->allowed(SpotSecurity::spotsec_send_notifications_services, '') && $tplHelper->allowed(SpotSecurity::spotsec_send_notifications_types, '')) { ?>
 		<div id="edituserpreftab-4">
@@ -265,7 +257,8 @@ include "includes/form-messages.inc.php";
 			</fieldset>
 <?php } ?>
 
-<?php if ($tplHelper->allowed(SpotSecurity::spotsec_send_notifications_services, 'prowl')) { ?>
+<?php if (version_compare(PHP_VERSION, '5.3.0') >= 0) { ?>
+	<?php if ($tplHelper->allowed(SpotSecurity::spotsec_send_notifications_services, 'prowl')) { ?>
 <!-- Prowl -->
 			<fieldset>
 				<dt><label for="use_prowl">Prowl gebruiken?</label></dt>
@@ -276,6 +269,24 @@ include "includes/form-messages.inc.php";
 					<dd><input type="text" name="edituserprefsform[notifications][prowl][apikey]" value="<?php echo htmlspecialchars($edituserprefsform['notifications']['prowl']['apikey']); ?>"></dd>
 
 					<?php showNotificationOptions('prowl', $edituserprefsform, $tplHelper); ?>
+				</fieldset>
+			</fieldset>
+	<?php } ?>
+<?php } ?>
+
+<?php if ($tplHelper->allowed(SpotSecurity::spotsec_send_notifications_services, 'twitter')) { ?>
+<!-- Twitter -->
+			<fieldset>
+				<dt><label for="use_twitter">Twitter gebruiken?</label></dt>
+				<dd><input type="checkbox" class="enabler" name="edituserprefsform[notifications][twitter][enabled]" id="use_twitter" <?php if ($edituserprefsform['notifications']['twitter']['enabled']) { echo 'checked="checked"'; } ?>></dd>
+
+				<fieldset id="content_use_twitter">
+					<div class="testNotification" id="twitter_result"><b>Stap 1</b>:<br />Klik op de knop "Toestemming Vragen". Dit opent een nieuwe pagina met een PIN nummer.<br />Let op: als er niets gebeurt, controleer je pop-up blocker.</div>
+					<input type="button" value="Toestemming Vragen" id="twitter_request_auth" />
+	<?php if (!empty($edituserprefsform['notifications']['twitter']['screen_name'])) { ?>
+					<input type="button" id="twitter_remove" value="Account <?php echo $edituserprefsform['notifications']['twitter']['screen_name']; ?> verwijderen" />
+	<?php } ?>
+					<?php showNotificationOptions('twitter', $edituserprefsform, $tplHelper); ?>
 				</fieldset>
 			</fieldset>
 <?php } ?>
@@ -289,7 +300,7 @@ include "includes/form-messages.inc.php";
 		<div id="edituserpreftab-5" class="ui-tabs-hide">
 			<fieldset>
 				<dt>
-					<label for="edituserprefsform[customcss]">Custom CSS stylesheet gebruiken</label>
+					<label for="edituserprefsform[customcss]">Custom CSS gebruiken</label>
 				</dt>
 				<dd>
 					<textarea name="edituserprefsform[customcss]" rows="15" cols="120"><?php echo $edituserprefsform['customcss']; ?></textarea>
