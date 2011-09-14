@@ -275,7 +275,7 @@ class SpotDb {
 	 */
 	function getUser($userid) {
         $params = array(
-            'userid' => $userid
+            'userid' => (int)$userid
         );
         $tmp = $this->_conn->arrayQuery('
             SELECT
@@ -396,7 +396,7 @@ class SpotDb {
 		# daarna updaten we zijn preferences
         $params = array(
             'prefs' => serialize($user['prefs']),
-            'userid' => $user['userid']
+            'userid' => (int)$user['userid']
         );
 		$this->_conn->modify('
             UPDATE usersettings
@@ -480,7 +480,7 @@ class SpotDb {
                 :mail,
                 :apikey,
                 :lastread,
-                \'false\'
+                0
             )', $params);
 
 		# We vragen nu het userrecord terug op om het userid te krijgen,
@@ -1025,7 +1025,7 @@ class SpotDb {
                 'usersignature' => $comment['usersignature'],
                 'userkey'       => serialize($comment['user-key']),
                 'userid'        => $comment['userid'],
-                'body'          => implode(PHP_EOL, $comment['body']),
+                'body'          => implode("\r\n", $comment['body']),
                 'verified'       => $comment['verified']
             );
 			$this->_conn->modify($query, $params);
@@ -1485,7 +1485,7 @@ class SpotDb {
 	function removeSecurityGroup($group) {
 		$this->_conn->modify('
 		    DELETE FROM securitygroups
-		    WHERE id = :name
+		    WHERE id = :id
 		', Array('id' => $group['id']));
 	} # removeSecurityGroup
 	
@@ -1587,18 +1587,19 @@ class SpotDb {
 	 * Voegt een filter en de children toe (recursive)
 	 */
 	function addFilter($userId, $filter) {
+        $params = Array('userid' => (int)$userId,
+                        'filtertype'=> $filter['filtertype'],
+                        'title'     => $filter['title'],
+                        'icon'      => $filter['icon'],
+                        'torder'    => $filter['torder'],
+                        'tparent'   => $filter['tparent'],
+                        'tree'      => $filter['tree'],
+                        'valuelist' => implode('&', $filter['valuelist']),
+                        'sorton'    => $filter['sorton'],
+                        'sortorder' => $filter['sortorder']);
 		$this->_conn->modify("INSERT INTO filters(userid, filtertype, title, icon, torder, tparent, tree, valuelist, sorton, sortorder)
-								VALUES(%d, '%s', '%s', '%s', %d, %d, '%s', '%s', '%s', '%s')",
-							Array($userId,
-								  $filter['filtertype'],
-								  $filter['title'],
-								  $filter['icon'],
-								  $filter['torder'],
-								  $filter['tparent'],
-								  $filter['tree'],
-								  implode('&', $filter['valuelist']),
-								  $filter['sorton'],
-								  $filter['sortorder']));
+								VALUES(:userid, :filtertype, :title, :icon, :torder, :tparent, :tree, :valuelist, :sorton, :sortorder)",$params);
+
 		$parentId = $this->_conn->lastInsertId('filters');
 
 		foreach($filter['children'] as $tmpFilter) {
