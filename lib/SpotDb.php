@@ -372,7 +372,7 @@ class SpotDb {
             'lastname'      => $user['lastname'],
             'mail'          => $user['mail'],
             'apikey'        => (int)$user['apikey'],
-            'lastlogin'     => (int)$user['lastlogin'],
+            'lastlogin'     => (isset($user['lastlogin']) ? (int)$user['lastlogin'] : time()),
             'lastvisit'     => (int)$user['lastvisit'],
             'lastread'      => (int)$user['lastread'],
             'lastapiusage'  => (int)$user['lastapiusage'],
