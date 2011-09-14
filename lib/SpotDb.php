@@ -262,7 +262,7 @@ class SpotDb {
 	 * Checkt of een emailaddress al bestaat
 	 */
 	function userEmailExists($mail) {
-		$tmpResult = $this->_conn->singleQuery('SELECT id FROM users WHERE mail = :mail LIMIT 1', array('mail' => $mail));
+		$tmpResult = $this->_conn->singleQuery('SELECT id FROM users WHERE mail = :mail AND deleted = 0 LIMIT 1', array('mail' => $mail));
 		if (!empty($tmpResult)) {
 			return $tmpResult;
 		} # if
