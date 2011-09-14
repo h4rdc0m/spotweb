@@ -48,13 +48,13 @@ class SpotSigning {
 	 * Creeert een private en public key paar
 	 */
 	public function createPrivateKey($sslCnfPath) {
-		$rsa = new Crypt_RSA();
-		$rsa->setSignatureMode(CRYPT_RSA_SIGNATURE_PKCS1);
-			
 		# We hebben deze code geconfigureerd uit Crypt/RSA.php omdat
 		# we anders de configuratie parameter niet mee kunnen geven aan
 		# openssl_pkey_new()
 		if (CRYPT_RSA_MODE != CRYPT_RSA_MODE_OPENSSL) {
+            $rsa = new Crypt_RSA();
+		    $rsa->setSignatureMode(CRYPT_RSA_SIGNATURE_PKCS1);
+
 			# We krijgen de keys base encoded terug		
 			$keyPair = $rsa->createKey();
 			return array('public' => $keyPair['publickey'],
