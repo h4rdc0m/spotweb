@@ -98,7 +98,7 @@ class SpotDb {
             'randomstr' => $comment['randomstr'],
             'rating'    => (int)$comment['rating'],
             'body'      => $comment['body'],
-            'time'      => (int)time()
+            'stamp'      => (int)time()
         );
         $this->_conn->modify('
             INSERT INTO commentsposted (ouruserid, messageid, inreplyto, randompart, rating, body, stamp)
