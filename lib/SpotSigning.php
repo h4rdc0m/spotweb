@@ -3,6 +3,7 @@ class SpotSigning {
 
 	public function __construct() {
 		if (!defined('CRYPT_RSA_MODE')) {
+            require_once 'Crypt/RSA.php';
 			if (extension_loaded("openssl")) {
 				define('CRYPT_RSA_MODE', CRYPT_RSA_MODE_OPENSSL);
 			} else {
