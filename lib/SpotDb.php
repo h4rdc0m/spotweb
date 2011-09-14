@@ -1013,7 +1013,7 @@ class SpotDb {
 	function addCommentsFull($commentList) {
         $query = '
             INSERT INTO commentsfull (messageid, fromhdr, stamp, usersignature, userkey, userid, body, verified)
-            VALUES (:messageid, :fromhdr, :stamp, :usersignature, :userkey, :userkey, :userid, :body, :verified)
+            VALUES (:messageid, :fromhdr, :stamp, :usersignature, :userkey, :userid, :body, :verified)
         ';
 		foreach($commentList as $comment) {
 			# Kap de verschillende strings af op een maximum van 
@@ -1025,7 +1025,7 @@ class SpotDb {
                 'usersignature' => $comment['usersignature'],
                 'userkey'       => serialize($comment['user-key']),
                 'userid'        => $comment['userid'],
-                'body'          => implode('\r\n', $comment['body']),
+                'body'          => implode(PHP_EOL, $comment['body']),
                 'verified'       => $comment['verified']
             );
 			$this->_conn->modify($query, $params);
