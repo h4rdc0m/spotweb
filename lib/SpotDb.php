@@ -1622,7 +1622,7 @@ class SpotDb {
 	 * Verwijdert alle ingestelde filters voor een user
 	 */
 	function removeAllFilters($userId) {
-		$this->_conn->modify("DELETE FROM filters WHERE userid = %d", Array((int) $userId));
+		$this->_conn->modify("DELETE FROM filters WHERE userid = :userid", Array('userid' => (int) $userId));
 	} # removeAllfilters
 
 	/*
@@ -1642,8 +1642,8 @@ class SpotDb {
 													  sorton,
 													  sortorder 
 												FROM filters 
-												WHERE userid = %d AND id = %d",
-					Array((int) $userId, (int) $filterId));
+												WHERE userid = :userid AND id = :id",
+					Array('userid' => (int) $userId, 'id' => (int) $filterId));
 		if (!empty($tmpResult)) {
 			return $tmpResult[0];
 		} else {
@@ -1668,8 +1668,8 @@ class SpotDb {
 													  sorton,
 													  sortorder 
 												FROM filters 
-												WHERE userid = %d AND filtertype = 'index_filter'",
-					Array((int) $userId));
+												WHERE userid = :userid AND filtertype = 'index_filter'",
+					Array('userid' => (int) $userId));
 		if (!empty($tmpResult)) {
 			return $tmpResult[0];
 		} else {
@@ -1684,17 +1684,17 @@ class SpotDb {
 	function updateFilter($userId, $filter) {
 		/* Haal de lijst met filter values op */
 		$tmpResult = $this->_conn->modify("UPDATE filters 
-												SET title = '%s',
-												    icon = '%s',
-													torder = %d,
-													tparent = %d
-												WHERE userid = %d AND id = %d",
-					Array($filter['title'], 
-						  $filter['icon'], 
-						  (int) $filter['torder'], 
-						  (int) $filter['tparent'], 
-						  (int) $userId, 
-						  (int) $filter['id']));
+												SET title = :title,
+												    icon = :icon,
+													torder = :torder,
+													tparent = :tparent
+												WHERE userid = :userid AND id = :id",
+					Array('title'   => $filter['title'],
+						  'icon'    => $filter['icon'],
+						  'torder'  => (int) $filter['torder'],
+						  'tparent' => (int) $filter['tparent'],
+						  'userid'  => (int) $userId,
+						  'id'      => (int) $filter['id']));
 	} # updateFilter
 
 	/* 
@@ -1721,9 +1721,9 @@ class SpotDb {
 											  sorton,
 											  sortorder 
 										FROM filters 
-										WHERE userid = %d " . $filterTypeFilter . "
+										WHERE userid = :userid " . $filterTypeFilter . "
 										ORDER BY tparent,torder", /* was: id, tparent, torder */
-				Array($userId));
+				Array('userid'=>$userId));
 	} # getPlainFilterList
 	
 	/*
