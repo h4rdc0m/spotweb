@@ -169,7 +169,7 @@ class SpotDb {
 	function getSession($sessionid, $userid) {
         $params = array(
             'sessionid' => $sessionid,
-            'userid'    => $userid
+            'userid'    => (int)$userid
         );
         $tmp = $this->_conn->arrayQuery('
         SELECT sessionid, userid, hitcount, lasthit
