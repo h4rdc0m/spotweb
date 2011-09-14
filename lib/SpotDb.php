@@ -1476,7 +1476,7 @@ class SpotDb {
 		$this->_conn->modify('
 		    INSERT INTO securitygroups(name)
 		    VALUES (:name)
-        ', array('name', $group['name']));
+        ', array('name' => $group['name']));
 	} # addSecurityGroup
 
 	/*
